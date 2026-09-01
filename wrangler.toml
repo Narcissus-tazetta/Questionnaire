@@ -1,0 +1,27 @@
+name = "daily-poll-manager-bot"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "daily-poll-manager"
+database_id = "ac3dd5f6-6d36-4066-b568-4fedf0cb0aa7"
+migrations_dir = "migrations"
+
+# 抽選のタイマー。Cron Trigger を使わず DO アラームで毎日1回だけ起動する。
+[[durable_objects.bindings]]
+name = "DRAW_SCHEDULER"
+class_name = "DrawScheduler"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DrawScheduler"]
+
+[vars]
+GUILD_ID = "REPLACE_WITH_YOUR_GUILD_ID"
+
+# シークレットは `wrangler secret put` で登録する(コードやこのファイルに書かない):
+#   DISCORD_TOKEN
+#   DISCORD_PUBLIC_KEY
+#   DISCORD_APP_ID

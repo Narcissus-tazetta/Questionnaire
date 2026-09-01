@@ -18,10 +18,8 @@ class_name = "DrawScheduler"
 tag = "v1"
 new_sqlite_classes = ["DrawScheduler"]
 
-[vars]
-GUILD_ID = "REPLACE_WITH_YOUR_GUILD_ID"
-
-# シークレットは `wrangler secret put` で登録する(コードやこのファイルに書かない):
+# 以下はすべて `wrangler secret put <NAME>` で登録する(コードやこのファイルに書かない):
 #   DISCORD_TOKEN
 #   DISCORD_PUBLIC_KEY
 #   DISCORD_APP_ID
+#   GUILD_ID        ← 対象サーバーID。.dev.vars / .env はデプロイ先には反映されないので必須。

@@ -6,6 +6,7 @@ export interface GuildConfig {
   timezone: string;
   role_id: string;
   channel_id: string;
+  work_channel_id: string | null;
 }
 
 export interface DailyResult {
@@ -32,14 +33,15 @@ export async function upsertConfig(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO guild_config (guild_id, draw_time, role_id, channel_id)
-       VALUES (?1, ?2, ?3, ?4)
+      `INSERT INTO guild_config (guild_id, draw_time, role_id, channel_id, work_channel_id)
+       VALUES (?1, ?2, ?3, ?4, ?5)
        ON CONFLICT(guild_id) DO UPDATE SET
          draw_time = excluded.draw_time,
          role_id = excluded.role_id,
-         channel_id = excluded.channel_id`,
+         channel_id = excluded.channel_id,
+         work_channel_id = excluded.work_channel_id`,
     )
-    .bind(cfg.guild_id, cfg.draw_time, cfg.role_id, cfg.channel_id)
+    .bind(cfg.guild_id, cfg.draw_time, cfg.role_id, cfg.channel_id, cfg.work_channel_id)
     .run();
 }
 

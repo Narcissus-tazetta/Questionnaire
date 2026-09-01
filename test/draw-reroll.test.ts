@@ -49,6 +49,7 @@ async function setup(env: ReturnType<typeof makeEnv>) {
     draw_time: "20:00",
     role_id: "r",
     channel_id: "c",
+    work_channel_id: "w",
   });
 }
 
@@ -64,6 +65,11 @@ test("first draw posts an announcement and stores its message id", async () => {
   const posts = calls.filter((c) => c.fn === "postMessage");
   expect(posts).toHaveLength(1);
   expect(calls.some((c) => c.fn === "editMessage")).toBe(false);
+
+  const content = String(posts[0]!.args[2]);
+  expect(content).toContain("本日のアンケート担当者は");
+  expect(content).toContain("<#w>"); // work channel, not the announce channel
+  expect(content).not.toMatch(/\p{Extended_Pictographic}/u); // no emoji
 
   const stored = await getResult(env.DB, "g", isoDate());
   expect(stored?.message_id).toBe("msg-1");

@@ -5,7 +5,7 @@ import { join } from "node:path";
 /** Minimal D1Database-shaped adapter over bun:sqlite, enough for queries.ts. */
 export function makeD1(): D1Database {
   const db = new Database(":memory:");
-  for (const f of ["0001_init.sql", "0002_result_message_id.sql"]) {
+  for (const f of ["0001_init.sql", "0002_result_message_id.sql", "0003_work_channel.sql"]) {
     db.exec(readFileSync(join(process.cwd(), "migrations", f), "utf8"));
   }
 

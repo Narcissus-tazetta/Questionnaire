@@ -48,21 +48,26 @@ const RESULT_TYPE: Record<DrawMode, DailyResult["type"]> = {
   reroll: "reroll",
 };
 
-function notification(winnerId: string, rerolled = false): string {
+function workChannelLine(cfg: GuildConfig): string {
+  const channel = cfg.work_channel_id ?? cfg.channel_id;
+  return `<#${channel}> にてアンケートの作成をお願いします。`;
+}
+
+function notification(cfg: GuildConfig, winnerId: string, rerolled = false): string {
   const head = rerolled
-    ? "🎉 本日のアンケート担当者が決まりました!(再抽選)"
-    : "🎉 本日のアンケート担当者が決まりました!";
-  return `${head}\n\n<@${winnerId}> さんです!\n\n本日のアンケートをよろしくお願いします!📋`;
+    ? `本日のアンケート担当者は <@${winnerId}> さんです。（再抽選）`
+    : `本日のアンケート担当者は <@${winnerId}> さんです。`;
+  return `${head}\n${workChannelLine(cfg)}`;
 }
 
 function rerollFollowup(winnerId: string): string {
-  return `🔁 再抽選しました → <@${winnerId}> さん`;
+  return `再抽選しました。新しい担当者は <@${winnerId}> さんです。`;
 }
 
 function carryoverEdit(prevWinnerId: string | null): string {
   return prevWinnerId
-    ? `⚠️ 参加者がいなくなったため再抽選は取り消され、<@${prevWinnerId}> さんが引き続き担当です。`
-    : "⚠️ 参加者がいなくなったため再抽選は取り消されました。担当者は未定です。";
+    ? `参加者がいなくなったため再抽選は取り消されました。引き続き <@${prevWinnerId}> さんが担当です。`
+    : "参加者がいなくなったため再抽選は取り消されました。担当者は未定です。";
 }
 
 /**
@@ -79,14 +84,14 @@ async function announceWinner(
   existingMessageId: string | null,
 ): Promise<void> {
   if (mode === "reroll" && existingMessageId) {
-    await editMessage(env, cfg.channel_id, existingMessageId, notification(winnerId, true), [winnerId]);
+    await editMessage(env, cfg.channel_id, existingMessageId, notification(cfg, winnerId, true), [winnerId]);
     await postMessage(env, cfg.channel_id, rerollFollowup(winnerId), [winnerId]);
     return;
   }
   const messageId = await postMessage(
     env,
     cfg.channel_id,
-    notification(winnerId, mode === "reroll"),
+    notification(cfg, winnerId, mode === "reroll"),
     [winnerId],
   );
   await setResultMessageId(env.DB, env.GUILD_ID, date, messageId);

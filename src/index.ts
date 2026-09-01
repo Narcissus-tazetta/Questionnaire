@@ -37,7 +37,7 @@ export default {
       if (!interaction.guild_id || interaction.guild_id !== env.GUILD_ID) {
         return Response.json({
           type: 4,
-          data: { content: "🚫 このBotは指定されたサーバーでのみ利用できます。", flags: EPHEMERAL },
+          data: { content: "このBotは指定されたサーバーでのみ利用できます。", flags: EPHEMERAL },
         });
       }
 
@@ -53,7 +53,7 @@ export default {
         });
         return Response.json({
           type: 4,
-          data: { content: "❌ 処理中にエラーが発生しました。", flags: EPHEMERAL },
+          data: { content: "処理中にエラーが発生しました。", flags: EPHEMERAL },
         });
       }
     }

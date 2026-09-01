@@ -20,6 +20,7 @@ export type DrawResult =
   | { status: "not_setup" }
   | { status: "already_drawn"; winnerId: string | null; type: DailyResult["type"] }
   | { status: "nothing_to_reroll" }
+  | { status: "reroll_no_candidates"; winnerId: string }
   | { status: "carryover"; winnerId: string | null }
   | { status: "drawn"; winnerId: string };
 
@@ -70,6 +71,10 @@ function carryoverEdit(prevWinnerId: string | null): string {
     : "参加者がいなくなったため再抽選は取り消されました。担当者は未定です。";
 }
 
+function carryoverFollowup(prevWinnerId: string): string {
+  return `再抽選は取り消されました。引き続き <@${prevWinnerId}> さんが担当です。`;
+}
+
 /**
  * Announce the winner. On reroll, edit the original announcement in place and
  * add a short follow-up so the new winner is pinged; otherwise post fresh and
@@ -103,11 +108,11 @@ async function reconcileRoles(
   oldHolder: string | null,
   newHolder: string | null,
 ): Promise<void> {
-  if (oldHolder && oldHolder !== newHolder) {
+  // Grant before revoke: a failed grant must never leave the role unassigned,
+  // so the old holder keeps it until the new one demonstrably has it.
+  const granted = newHolder ? await addRole(env, cfg.guild_id, newHolder, cfg.role_id) : true;
+  if (oldHolder && oldHolder !== newHolder && granted) {
     await removeRole(env, cfg.guild_id, oldHolder, cfg.role_id);
-  }
-  if (newHolder) {
-    await addRole(env, cfg.guild_id, newHolder, cfg.role_id);
   }
 }
 
@@ -137,6 +142,13 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
   const selection = selectWinner({ entries, prevWinnerId, excludeIds });
 
   if (selection.kind === "carryover") {
+    // A reroll with no *other* eligible entrant leaves the current winner in
+    // place rather than demoting them to yesterday's holder.
+    if (mode === "reroll" && existing?.winner_id && entries.includes(existing.winner_id)) {
+      logger.info("Reroll had no alternative candidate", { guild: env.GUILD_ID, date });
+      return { status: "reroll_no_candidates", winnerId: existing.winner_id };
+    }
+
     logger.warn("No participants", { guild: env.GUILD_ID, date, mode });
     const record = {
       guild_id: env.GUILD_ID,
@@ -148,8 +160,13 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
       // Undo the earlier winner's role from today's first draw.
       await reconcileRoles(env, cfg, existing?.winner_id ?? null, prevWinnerId);
       await updateResult(env.DB, record);
+      const mentions = prevWinnerId ? [prevWinnerId] : [];
       if (existing?.message_id) {
-        await editMessage(env, cfg.channel_id, existing.message_id, carryoverEdit(prevWinnerId));
+        await editMessage(env, cfg.channel_id, existing.message_id, carryoverEdit(prevWinnerId), mentions);
+      }
+      // Edits don't notify, so ping the carried-over holder with a follow-up.
+      if (prevWinnerId) {
+        await postMessage(env, cfg.channel_id, carryoverFollowup(prevWinnerId), [prevWinnerId]);
       }
     } else {
       const inserted = await insertResult(env.DB, record);

@@ -77,6 +77,20 @@ export async function addDailyEntry(
   return (res.meta.changes ?? 0) > 0;
 }
 
+/** Housekeeping: drop per-day rows for days before `cutoffDate` (exclusive). */
+export async function purgeDailyDataBefore(
+  db: D1Database,
+  guildId: string,
+  cutoffDate: string,
+): Promise<void> {
+  for (const table of ["daily_entries", "daily_exclusions"]) {
+    await db
+      .prepare(`DELETE FROM ${table} WHERE guild_id = ? AND date < ?`)
+      .bind(guildId, cutoffDate)
+      .run();
+  }
+}
+
 /** Returns false when there was no row to delete. */
 export async function removeDailyEntry(
   db: D1Database,
@@ -197,18 +211,6 @@ export async function resolveParticipants(
     .bind(guildId, date)
     .all<{ user_id: string; auto: number }>();
   return (res.results ?? []).map((r) => ({ userId: r.user_id, auto: r.auto === 1 }));
-}
-
-/** True when the user is in the draw for `date` (per-day entry, or auto and not opted out). */
-export async function isParticipating(
-  db: D1Database,
-  guildId: string,
-  date: string,
-  userId: string,
-): Promise<boolean> {
-  if (await isExcluded(db, guildId, date, userId)) return false;
-  if (await hasDailyEntry(db, guildId, date, userId)) return true;
-  return isAuto(db, guildId, userId);
 }
 
 /* ---------- results ---------- */

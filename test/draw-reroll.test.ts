@@ -5,6 +5,7 @@ import {
   addDailyEntry,
   getResult,
   insertResult,
+  removeDailyEntry,
   upsertConfig,
 } from "../src/db/queries";
 
@@ -123,6 +124,52 @@ test("reroll falls back to a fresh post when the original message id is missing"
 
   const stored = await getResult(env.DB, "g", isoDate());
   expect(stored?.message_id).toBe("msg-2");
+});
+
+test("reroll keeps the current winner when no other entrant is eligible", async () => {
+  const env = makeEnv();
+  await setup(env);
+  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
+  await addDailyEntry(env.DB, "g", isoDate(), "X");
+  await addDailyEntry(env.DB, "g", isoDate(), "Y"); // yesterday's winner, blocked by the 1-day rule
+
+  const first = await runDraw(env, "auto");
+  expect((first as { winnerId: string }).winnerId).toBe("X");
+  calls = [];
+
+  const res = await runDraw(env, "reroll");
+  expect(res).toEqual({ status: "reroll_no_candidates", winnerId: "X" });
+  expect(calls.some((c) => c.fn === "editMessage")).toBe(false);
+  expect(calls.some((c) => c.fn === "postMessage")).toBe(false);
+  expect(calls.some((c) => c.fn === "removeRole")).toBe(false);
+
+  const stored = await getResult(env.DB, "g", isoDate());
+  expect(stored?.winner_id).toBe("X");
+  expect(stored?.type).toBe("normal"); // untouched
+});
+
+test("reroll that loses every entrant carries over and pings the holder", async () => {
+  const env = makeEnv();
+  await setup(env);
+  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
+  await addDailyEntry(env.DB, "g", isoDate(), "A");
+  await runDraw(env, "auto"); // A wins, announced as msg-1
+  await removeDailyEntry(env.DB, "g", isoDate(), "A"); // A drops out before the reroll
+  calls = [];
+
+  const res = await runDraw(env, "reroll");
+  expect(res).toEqual({ status: "carryover", winnerId: "Y" });
+
+  const edit = calls.find((c) => c.fn === "editMessage");
+  expect(edit?.args[4]).toEqual(["Y"]);
+  const followup = calls.find((c) => c.fn === "postMessage");
+  expect(String(followup?.args[2])).toContain("Y");
+  expect(calls.find((c) => c.fn === "removeRole")?.args[2]).toBe("A");
+  expect(calls.find((c) => c.fn === "addRole")?.args[2]).toBe("Y");
+
+  const stored = await getResult(env.DB, "g", isoDate());
+  expect(stored?.type).toBe("carryover");
+  expect(stored?.winner_id).toBe("Y");
 });
 
 test("previous-day winner is excluded and does not lose their role on carryover", async () => {

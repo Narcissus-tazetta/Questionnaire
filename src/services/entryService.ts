@@ -8,7 +8,6 @@ import {
   hasDailyEntry,
   isAuto,
   isExcluded,
-  isParticipating,
   removeAuto,
   removeDailyEntry,
   removeExclusion,
@@ -26,20 +25,20 @@ export interface Outcome {
   message: string;
 }
 
-async function requireConfig(env: Env): Promise<boolean> {
-  return (await getConfig(env.DB, env.GUILD_ID)) !== null;
-}
-
 export async function entry(env: Env, userId: string): Promise<Outcome> {
-  if (!(await requireConfig(env))) return { ok: false, message: NOT_SETUP };
-
   const date = dateJST();
-  if (await getResult(env.DB, env.GUILD_ID, date)) {
-    return { ok: false, message: CLOSED_ENTRY };
-  }
+  const [cfg, drawn, auto, excluded, hasEntry] = await Promise.all([
+    getConfig(env.DB, env.GUILD_ID),
+    getResult(env.DB, env.GUILD_ID, date),
+    isAuto(env.DB, env.GUILD_ID, userId),
+    isExcluded(env.DB, env.GUILD_ID, date, userId),
+    hasDailyEntry(env.DB, env.GUILD_ID, date, userId),
+  ]);
 
-  if (await isParticipating(env.DB, env.GUILD_ID, date, userId)) {
-    const auto = await isAuto(env.DB, env.GUILD_ID, userId);
+  if (!cfg) return { ok: false, message: NOT_SETUP };
+  if (drawn) return { ok: false, message: CLOSED_ENTRY };
+
+  if (!excluded && (hasEntry || auto)) {
     return {
       ok: false,
       message: auto
@@ -55,15 +54,17 @@ export async function entry(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function cancel(env: Env, userId: string): Promise<Outcome> {
-  if (!(await requireConfig(env))) return { ok: false, message: NOT_SETUP };
-
   const date = dateJST();
-  if (await getResult(env.DB, env.GUILD_ID, date)) {
-    return { ok: false, message: CLOSED_CANCEL };
-  }
+  const [cfg, drawn, auto] = await Promise.all([
+    getConfig(env.DB, env.GUILD_ID),
+    getResult(env.DB, env.GUILD_ID, date),
+    isAuto(env.DB, env.GUILD_ID, userId),
+  ]);
+
+  if (!cfg) return { ok: false, message: NOT_SETUP };
+  if (drawn) return { ok: false, message: CLOSED_CANCEL };
 
   const removed = await removeDailyEntry(env.DB, env.GUILD_ID, date, userId);
-  const auto = await isAuto(env.DB, env.GUILD_ID, userId);
   let optedOut = false;
   if (auto && !(await isExcluded(env.DB, env.GUILD_ID, date, userId))) {
     await addExclusion(env.DB, env.GUILD_ID, date, userId);
@@ -84,12 +85,17 @@ export async function cancel(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function toggleAuto(env: Env, userId: string): Promise<Outcome> {
-  if (!(await requireConfig(env))) return { ok: false, message: NOT_SETUP };
-
   const date = dateJST();
-  const drawnToday = (await getResult(env.DB, env.GUILD_ID, date)) !== null;
+  const [cfg, drawn, currentlyAuto] = await Promise.all([
+    getConfig(env.DB, env.GUILD_ID),
+    getResult(env.DB, env.GUILD_ID, date),
+    isAuto(env.DB, env.GUILD_ID, userId),
+  ]);
 
-  if (await isAuto(env.DB, env.GUILD_ID, userId)) {
+  if (!cfg) return { ok: false, message: NOT_SETUP };
+  const drawnToday = drawn !== null;
+
+  if (currentlyAuto) {
     await removeAuto(env.DB, env.GUILD_ID, userId);
     logger.info("Auto-entry off", { guild: env.GUILD_ID, user: userId });
     const keepsToday = await hasDailyEntry(env.DB, env.GUILD_ID, date, userId);
@@ -108,12 +114,16 @@ export async function toggleAuto(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function status(env: Env, userId: string): Promise<string> {
-  if (!(await requireConfig(env))) return NOT_SETUP;
-
   const date = dateJST();
-  const auto = await isAuto(env.DB, env.GUILD_ID, userId);
-  const excludedToday = await isExcluded(env.DB, env.GUILD_ID, date, userId);
-  const joined = await isParticipating(env.DB, env.GUILD_ID, date, userId);
+  const [cfg, auto, excludedToday, hasEntry] = await Promise.all([
+    getConfig(env.DB, env.GUILD_ID),
+    isAuto(env.DB, env.GUILD_ID, userId),
+    isExcluded(env.DB, env.GUILD_ID, date, userId),
+    hasDailyEntry(env.DB, env.GUILD_ID, date, userId),
+  ]);
+  if (!cfg) return NOT_SETUP;
+
+  const joined = !excludedToday && (hasEntry || auto);
 
   let joinLine: string;
   if (joined) joinLine = "参加中";

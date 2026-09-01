@@ -11,6 +11,31 @@ import { logger } from "../util/logger";
 
 const ADMIN_ONLY = "このコマンドはサーバー管理権限を持つメンバー専用です。";
 
+/**
+ * Acknowledge immediately with a deferred ephemeral reply, then run `work` and
+ * patch the result in. Keeps handlers inside Discord's 3-second ACK window
+ * regardless of how many round-trips the work needs.
+ */
+function deferred(
+  interaction: Interaction,
+  env: Env,
+  ctx: ExecutionContext,
+  work: () => Promise<string>,
+): Response {
+  ctx.waitUntil(
+    work()
+      .then((content) => editOriginal(env, interaction.token, content))
+      .catch((err) => {
+        logger.error("Command handler failed", {
+          command: interaction.data?.name,
+          error: String(err),
+        });
+        return editOriginal(env, interaction.token, "処理中にエラーが発生しました。");
+      }),
+  );
+  return deferEphemeral();
+}
+
 export async function handleCommand(
   interaction: Interaction,
   env: Env,
@@ -21,22 +46,23 @@ export async function handleCommand(
 
   switch (name) {
     case "entry":
-      return ephemeral((await entry(env, uid)).message);
+      return deferred(interaction, env, ctx, async () => (await entry(env, uid)).message);
 
     case "cancel":
-      return ephemeral((await cancel(env, uid)).message);
+      return deferred(interaction, env, ctx, async () => (await cancel(env, uid)).message);
 
     case "auto":
-      return ephemeral((await toggleAuto(env, uid)).message);
+      return deferred(interaction, env, ctx, async () => (await toggleAuto(env, uid)).message);
 
     case "status":
-      return ephemeral(await status(env, uid));
+      return deferred(interaction, env, ctx, () => status(env, uid));
 
     case "setup":
       return handleSetup(interaction, env, ctx);
 
     case "participants":
-      return handleParticipants(interaction, env);
+      if (!hasManageGuild(interaction)) return ephemeral(ADMIN_ONLY);
+      return deferred(interaction, env, ctx, () => describeParticipants(env));
 
     case "draw":
     case "reroll": {
@@ -102,21 +128,19 @@ async function handleSetup(
   );
 }
 
-async function handleParticipants(interaction: Interaction, env: Env): Promise<Response> {
-  if (!hasManageGuild(interaction)) return ephemeral(ADMIN_ONLY);
-
+async function describeParticipants(env: Env): Promise<string> {
   const cfg = await getConfig(env.DB, env.GUILD_ID);
-  if (!cfg) return ephemeral("まだ /setup が実行されていません。");
+  if (!cfg) return "まだ /setup が実行されていません。";
 
   const date = dateJST();
   const people = await resolveParticipants(env.DB, env.GUILD_ID, date);
   if (people.length === 0) {
-    return ephemeral(`${date} の参加者はまだいません。`);
+    return `${date} の参加者はまだいません。`;
   }
   const list = people
     .map((p, i) => `${i + 1}. <@${p.userId}>${p.auto ? "（自動）" : ""}`)
     .join("\n");
-  return ephemeral(`${date} の参加者（${people.length}名）\n\n${list}`);
+  return `${date} の参加者（${people.length}名）\n\n${list}`;
 }
 
 function describeDraw(r: DrawResult, mode: "manual" | "reroll"): string {
@@ -129,6 +153,8 @@ function describeDraw(r: DrawResult, mode: "manual" | "reroll"): string {
         : "本日は既に処理済みです（参加者不在のため担当継続）。";
     case "nothing_to_reroll":
       return "本日はまだ抽選が行われていません。/draw を使用してください。";
+    case "reroll_no_candidates":
+      return `他に対象となる参加者がいないため、担当は <@${r.winnerId}> さんのままです。`;
     case "carryover":
       return r.winnerId
         ? `参加者がいなかったため抽選は行われませんでした。<@${r.winnerId}> さんが引き続き担当です。`

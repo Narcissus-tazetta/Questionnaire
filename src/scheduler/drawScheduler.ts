@@ -1,5 +1,5 @@
 import type { Env } from "../config";
-import { getConfig, getResult } from "../db/queries";
+import { getConfig, getResult, purgeDailyDataBefore } from "../db/queries";
 import { runDraw } from "../services/drawService";
 import { dateJST, nextDrawEpochMs } from "../util/jst";
 import { logger } from "../util/logger";
@@ -59,6 +59,9 @@ export class DrawScheduler implements DurableObject {
         date: dateJST(),
         status: result.status,
       });
+      await purgeDailyDataBefore(this.env.DB, this.env.GUILD_ID, dateJST()).catch((e) =>
+        logger.warn("Daily data purge failed", { error: String(e) }),
+      );
     } finally {
       await this.reschedule(cfg.draw_time);
     }

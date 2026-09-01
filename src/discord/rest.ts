@@ -52,13 +52,30 @@ export async function removeRole(
   return res.ok;
 }
 
+/** Posts a message; returns its ID (needed later for editing), or null on failure. */
 export async function postMessage(
   env: Env,
   channelId: string,
   content: string,
   allowedUserMentions: string[] = [],
-): Promise<boolean> {
+): Promise<string | null> {
   const res = await call(env, "POST", `/channels/${channelId}/messages`, {
+    content,
+    allowed_mentions: { parse: [], users: allowedUserMentions },
+  });
+  if (!res.ok) return null;
+  const msg = (await res.json().catch(() => null)) as { id?: string } | null;
+  return msg?.id ?? null;
+}
+
+export async function editMessage(
+  env: Env,
+  channelId: string,
+  messageId: string,
+  content: string,
+  allowedUserMentions: string[] = [],
+): Promise<boolean> {
+  const res = await call(env, "PATCH", `/channels/${channelId}/messages/${messageId}`, {
     content,
     allowed_mentions: { parse: [], users: allowedUserMentions },
   });

@@ -14,7 +14,10 @@ export interface DailyResult {
   winner_id: string | null;
   drawn_at: string;
   type: "normal" | "manual" | "reroll" | "carryover";
+  message_id: string | null;
 }
+
+type ResultRecord = Omit<DailyResult, "drawn_at" | "message_id">;
 
 export async function getConfig(db: D1Database, guildId: string): Promise<GuildConfig | null> {
   return db
@@ -220,10 +223,7 @@ export async function getResult(
 }
 
 /** Returns false when a result already existed for the day (double-draw guard). */
-export async function insertResult(
-  db: D1Database,
-  r: Omit<DailyResult, "drawn_at">,
-): Promise<boolean> {
+export async function insertResult(db: D1Database, r: ResultRecord): Promise<boolean> {
   const res = await db
     .prepare(
       `INSERT OR IGNORE INTO daily_results (guild_id, date, winner_id, drawn_at, type)
@@ -234,15 +234,25 @@ export async function insertResult(
   return (res.meta.changes ?? 0) > 0;
 }
 
-export async function updateResult(
-  db: D1Database,
-  r: Omit<DailyResult, "drawn_at">,
-): Promise<void> {
+/** Re-draw: keeps the row, refreshes winner/type but not message_id. */
+export async function updateResult(db: D1Database, r: ResultRecord): Promise<void> {
   await db
     .prepare(
       `UPDATE daily_results SET winner_id = ?, drawn_at = ?, type = ?
        WHERE guild_id = ? AND date = ?`,
     )
     .bind(r.winner_id, nowISO(), r.type, r.guild_id, r.date)
+    .run();
+}
+
+export async function setResultMessageId(
+  db: D1Database,
+  guildId: string,
+  date: string,
+  messageId: string | null,
+): Promise<void> {
+  await db
+    .prepare("UPDATE daily_results SET message_id = ? WHERE guild_id = ? AND date = ?")
+    .bind(messageId, guildId, date)
     .run();
 }

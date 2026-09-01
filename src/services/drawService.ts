@@ -4,11 +4,12 @@ import {
   getResult,
   insertResult,
   resolveParticipants,
+  setResultMessageId,
   updateResult,
   type DailyResult,
   type GuildConfig,
 } from "../db/queries";
-import { addRole, postMessage, removeRole } from "../discord/rest";
+import { addRole, editMessage, postMessage, removeRole } from "../discord/rest";
 import { dateJST, previousDateJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { randomPick } from "../util/random";
@@ -22,10 +23,7 @@ export type DrawResult =
   | { status: "carryover"; winnerId: string | null }
   | { status: "drawn"; winnerId: string };
 
-interface Selection {
-  kind: "winner" | "carryover";
-  winnerId?: string;
-}
+type Selection = { kind: "winner"; winnerId: string } | { kind: "carryover" };
 
 /**
  * Pure selection: exclude the previous day's winner (§10) plus any reroll
@@ -50,12 +48,48 @@ const RESULT_TYPE: Record<DrawMode, DailyResult["type"]> = {
   reroll: "reroll",
 };
 
-function notification(winnerId: string): string {
-  return (
-    "🎉 本日のアンケート担当者が決まりました!\n\n" +
-    `<@${winnerId}> さんです!\n\n` +
-    "本日のアンケートをよろしくお願いします!📋"
+function notification(winnerId: string, rerolled = false): string {
+  const head = rerolled
+    ? "🎉 本日のアンケート担当者が決まりました!(再抽選)"
+    : "🎉 本日のアンケート担当者が決まりました!";
+  return `${head}\n\n<@${winnerId}> さんです!\n\n本日のアンケートをよろしくお願いします!📋`;
+}
+
+function rerollFollowup(winnerId: string): string {
+  return `🔁 再抽選しました → <@${winnerId}> さん`;
+}
+
+function carryoverEdit(prevWinnerId: string | null): string {
+  return prevWinnerId
+    ? `⚠️ 参加者がいなくなったため再抽選は取り消され、<@${prevWinnerId}> さんが引き続き担当です。`
+    : "⚠️ 参加者がいなくなったため再抽選は取り消されました。担当者は未定です。";
+}
+
+/**
+ * Announce the winner. On reroll, edit the original announcement in place and
+ * add a short follow-up so the new winner is pinged; otherwise post fresh and
+ * remember the message id for a later reroll.
+ */
+async function announceWinner(
+  env: Env,
+  cfg: GuildConfig,
+  date: string,
+  winnerId: string,
+  mode: DrawMode,
+  existingMessageId: string | null,
+): Promise<void> {
+  if (mode === "reroll" && existingMessageId) {
+    await editMessage(env, cfg.channel_id, existingMessageId, notification(winnerId, true), [winnerId]);
+    await postMessage(env, cfg.channel_id, rerollFollowup(winnerId), [winnerId]);
+    return;
+  }
+  const messageId = await postMessage(
+    env,
+    cfg.channel_id,
+    notification(winnerId, mode === "reroll"),
+    [winnerId],
   );
+  await setResultMessageId(env.DB, env.GUILD_ID, date, messageId);
 }
 
 async function reconcileRoles(
@@ -109,6 +143,9 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
       // Undo the earlier winner's role from today's first draw.
       await reconcileRoles(env, cfg, existing?.winner_id ?? null, prevWinnerId);
       await updateResult(env.DB, record);
+      if (existing?.message_id) {
+        await editMessage(env, cfg.channel_id, existing.message_id, carryoverEdit(prevWinnerId));
+      }
     } else {
       const inserted = await insertResult(env.DB, record);
       if (!inserted) {
@@ -119,7 +156,7 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
     return { status: "carryover", winnerId: prevWinnerId };
   }
 
-  const winnerId = selection.winnerId!;
+  const winnerId = selection.winnerId;
   const oldHolder = mode === "reroll" ? existing?.winner_id ?? null : prevWinnerId;
 
   const record = {
@@ -141,7 +178,7 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
 
   logger.info("Winner selected", { guild: env.GUILD_ID, user: winnerId, date, mode });
   await reconcileRoles(env, cfg, oldHolder, winnerId);
-  await postMessage(env, cfg.channel_id, notification(winnerId), [winnerId]);
+  await announceWinner(env, cfg, date, winnerId, mode, existing?.message_id ?? null);
   logger.info("Draw completed", { guild: env.GUILD_ID, date, mode });
 
   return { status: "drawn", winnerId };

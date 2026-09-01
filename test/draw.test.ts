@@ -29,7 +29,7 @@ test("selectWinner carries over when the only entrant is yesterday's winner", ()
 
 test("selectWinner without a previous winner picks from all entries", () => {
   const r = selectWinner({ entries: ["A", "B", "C"], prevWinnerId: null });
-  expect(r.kind).toBe("winner");
+  if (r.kind !== "winner") throw new Error("expected a winner");
   expect(["A", "B", "C"]).toContain(r.winnerId);
 });
 

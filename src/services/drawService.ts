@@ -10,6 +10,7 @@ import {
   type GuildConfig,
 } from "../db/queries";
 import { addRole, editMessage, postMessage, removeRole } from "../discord/rest";
+import { fill, messages } from "../messages";
 import { dateJST, previousDateJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { randomPick } from "../util/random";
@@ -49,30 +50,26 @@ const RESULT_TYPE: Record<DrawMode, DailyResult["type"]> = {
   reroll: "reroll",
 };
 
-function workChannelLine(cfg: GuildConfig): string {
-  const channel = cfg.work_channel_id ?? cfg.channel_id;
-  return `<#${channel}> にてアンケートの作成をお願いします。`;
-}
-
 function notification(cfg: GuildConfig, winnerId: string, rerolled = false): string {
-  const head = rerolled
-    ? `本日のアンケート担当者は <@${winnerId}> さんです。（再抽選）`
-    : `本日のアンケート担当者は <@${winnerId}> さんです。`;
-  return `${head}\n${workChannelLine(cfg)}`;
+  const template = rerolled ? messages.announce.winnerReroll : messages.announce.winner;
+  return fill(template, {
+    winner: `<@${winnerId}>`,
+    workChannel: `<#${cfg.work_channel_id ?? cfg.channel_id}>`,
+  });
 }
 
 function rerollFollowup(winnerId: string): string {
-  return `再抽選しました。新しい担当者は <@${winnerId}> さんです。`;
+  return fill(messages.announce.rerollFollowup, { winner: `<@${winnerId}>` });
 }
 
 function carryoverEdit(prevWinnerId: string | null): string {
   return prevWinnerId
-    ? `参加者がいなくなったため再抽選は取り消されました。引き続き <@${prevWinnerId}> さんが担当です。`
-    : "参加者がいなくなったため再抽選は取り消されました。担当者は未定です。";
+    ? fill(messages.announce.carryoverEditWithWinner, { prevWinner: `<@${prevWinnerId}>` })
+    : messages.announce.carryoverEditNoWinner;
 }
 
 function carryoverFollowup(prevWinnerId: string): string {
-  return `再抽選は取り消されました。引き続き <@${prevWinnerId}> さんが担当です。`;
+  return fill(messages.announce.carryoverFollowup, { prevWinner: `<@${prevWinnerId}>` });
 }
 
 /**

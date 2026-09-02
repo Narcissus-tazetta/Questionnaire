@@ -7,6 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { messages } from "../src/messages";
 
 function loadDevVars(): void {
   try {
@@ -35,38 +36,29 @@ function requireEnv(name: string): string {
   return v;
 }
 
+// Command descriptions live in src/messages.ts (commands:). Only the structure
+// — option types, required flags, admin permission — is defined here.
 // Option types: 3 = STRING, 7 = CHANNEL, 8 = ROLE
+const { commands: text } = messages;
 const commands = [
-  { name: "entry", description: "本日のアンケート担当抽選に参加する" },
-  { name: "auto", description: "自動参加のオン/オフを切り替える（解除するまで毎日参加）" },
-  { name: "cancel", description: "本日の抽選への参加を取り消す" },
-  { name: "status", description: "自分の参加状態と自動参加の設定を確認する" },
+  { name: "entry", description: text.entry },
+  { name: "auto", description: text.auto },
+  { name: "cancel", description: text.cancel },
+  { name: "status", description: text.status },
   {
     name: "setup",
-    description: "Botのサーバー設定を行う（管理者用）",
+    description: text.setup,
     default_member_permissions: "32", // MANAGE_GUILD
     options: [
-      { name: "draw_time", description: "抽選時刻 HH:MM（日本時間）", type: 3, required: true },
-      { name: "role", description: "アンケート担当ロール", type: 8, required: true },
-      { name: "channel", description: "抽選結果を告知するチャンネル", type: 7, required: true },
-      { name: "work_channel", description: "アンケートを制作するチャンネル", type: 7, required: true },
+      { name: "draw_time", description: text.setupOptions.draw_time, type: 3, required: true },
+      { name: "role", description: text.setupOptions.role, type: 8, required: true },
+      { name: "channel", description: text.setupOptions.channel, type: 7, required: true },
+      { name: "work_channel", description: text.setupOptions.work_channel, type: 7, required: true },
     ],
   },
-  {
-    name: "draw",
-    description: "本日の抽選を手動実行する（管理者用）",
-    default_member_permissions: "32",
-  },
-  {
-    name: "reroll",
-    description: "本日の抽選をやり直す（管理者用）",
-    default_member_permissions: "32",
-  },
-  {
-    name: "participants",
-    description: "本日の参加者一覧を表示する（管理者用）",
-    default_member_permissions: "32",
-  },
+  { name: "draw", description: text.draw, default_member_permissions: "32" },
+  { name: "reroll", description: text.reroll, default_member_permissions: "32" },
+  { name: "participants", description: text.participants, default_member_permissions: "32" },
 ];
 
 const res = await fetch(

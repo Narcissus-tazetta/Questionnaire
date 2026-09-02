@@ -8,8 +8,7 @@ import { runDraw, type DrawResult } from "../services/drawService";
 import { cancel, entry, status, toggleAuto } from "../services/entryService";
 import { dateJST, isValidDrawTime } from "../util/jst";
 import { logger } from "../util/logger";
-
-const ADMIN_ONLY = "このコマンドはサーバー管理権限を持つメンバー専用です。";
+import { fill, messages } from "../messages";
 
 /**
  * Acknowledge immediately with a deferred ephemeral reply, then run `work` and
@@ -30,7 +29,7 @@ function deferred(
           command: interaction.data?.name,
           error: String(err),
         });
-        return editOriginal(env, interaction.token, "処理中にエラーが発生しました。");
+        return editOriginal(env, interaction.token, messages.common.error);
       }),
   );
   return deferEphemeral();
@@ -61,30 +60,26 @@ export async function handleCommand(
       return handleSetup(interaction, env, ctx);
 
     case "participants":
-      if (!hasManageGuild(interaction)) return ephemeral(ADMIN_ONLY);
+      if (!hasManageGuild(interaction)) return ephemeral(messages.common.adminOnly);
       return deferred(interaction, env, ctx, () => describeParticipants(env));
 
     case "draw":
     case "reroll": {
-      if (!hasManageGuild(interaction)) return ephemeral(ADMIN_ONLY);
+      if (!hasManageGuild(interaction)) return ephemeral(messages.common.adminOnly);
       const mode = name === "draw" ? "manual" : "reroll";
       ctx.waitUntil(
         runDraw(env, mode)
           .then((r) => editOriginal(env, interaction.token, describeDraw(r, mode)))
           .catch((err) => {
             logger.error("Manual draw failed", { mode, error: String(err) });
-            return editOriginal(
-              env,
-              interaction.token,
-              "抽選処理でエラーが発生しました。ログを確認してください。",
-            );
+            return editOriginal(env, interaction.token, messages.draw.error);
           }),
       );
       return deferEphemeral();
     }
 
     default:
-      return ephemeral("未対応のコマンドです。");
+      return ephemeral(messages.common.unknownCommand);
   }
 }
 
@@ -93,7 +88,7 @@ async function handleSetup(
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  if (!hasManageGuild(interaction)) return ephemeral(ADMIN_ONLY);
+  if (!hasManageGuild(interaction)) return ephemeral(messages.common.adminOnly);
 
   const drawTime = optionValue(interaction, "draw_time");
   const roleId = optionValue(interaction, "role");
@@ -101,10 +96,10 @@ async function handleSetup(
   const workChannelId = optionValue(interaction, "work_channel");
 
   if (!drawTime || !roleId || !channelId || !workChannelId) {
-    return ephemeral("draw_time / role / channel / work_channel をすべて指定してください。");
+    return ephemeral(messages.setup.missingOptions);
   }
   if (!isValidDrawTime(drawTime)) {
-    return ephemeral("draw_time は HH:MM（24時間表記・日本時間）で指定してください。例: 20:00");
+    return ephemeral(messages.setup.invalidTime);
   }
 
   await upsertConfig(env.DB, {
@@ -120,48 +115,49 @@ async function handleSetup(
   );
 
   return ephemeral(
-    "セットアップを保存しました。\n" +
-      `抽選時刻: ${drawTime}（日本時間）\n` +
-      `担当ロール: <@&${roleId}>\n` +
-      `告知チャンネル: <#${channelId}>\n` +
-      `制作チャンネル: <#${workChannelId}>`,
+    fill(messages.setup.saved, {
+      drawTime,
+      role: `<@&${roleId}>`,
+      channel: `<#${channelId}>`,
+      workChannel: `<#${workChannelId}>`,
+    }),
   );
 }
 
 async function describeParticipants(env: Env): Promise<string> {
   const cfg = await getConfig(env.DB, env.GUILD_ID);
-  if (!cfg) return "まだ /setup が実行されていません。";
+  if (!cfg) return messages.common.notSetupShort;
 
   const date = dateJST();
   const people = await resolveParticipants(env.DB, env.GUILD_ID, date);
   if (people.length === 0) {
-    return `${date} の参加者はまだいません。`;
+    return fill(messages.participants.empty, { date });
   }
   const list = people
-    .map((p, i) => `${i + 1}. <@${p.userId}>${p.auto ? "（自動）" : ""}`)
+    .map((p, i) => `${i + 1}. <@${p.userId}>${p.auto ? messages.participants.autoSuffix : ""}`)
     .join("\n");
-  return `${date} の参加者（${people.length}名）\n\n${list}`;
+  return fill(messages.participants.list, { date, count: people.length, list });
 }
 
 function describeDraw(r: DrawResult, mode: "manual" | "reroll"): string {
   switch (r.status) {
     case "not_setup":
-      return "まだ /setup が実行されていません。";
+      return messages.common.notSetupShort;
     case "already_drawn":
       return r.winnerId
-        ? `本日は既に抽選済みです（担当者: <@${r.winnerId}>）。やり直すなら /reroll を使用してください。`
-        : "本日は既に処理済みです（参加者不在のため担当継続）。";
+        ? fill(messages.draw.alreadyDrawn, { winner: `<@${r.winnerId}>` })
+        : messages.draw.alreadyProcessed;
     case "nothing_to_reroll":
-      return "本日はまだ抽選が行われていません。/draw を使用してください。";
+      return messages.draw.nothingToReroll;
     case "reroll_no_candidates":
-      return `他に対象となる参加者がいないため、担当は <@${r.winnerId}> さんのままです。`;
+      return fill(messages.draw.rerollNoCandidates, { winner: `<@${r.winnerId}>` });
     case "carryover":
       return r.winnerId
-        ? `参加者がいなかったため抽選は行われませんでした。<@${r.winnerId}> さんが引き続き担当です。`
-        : "参加者がいなかったため抽選は行われませんでした。前日の担当者もいないため、担当者は未定です。";
+        ? fill(messages.draw.carryoverWithWinner, { winner: `<@${r.winnerId}>` })
+        : messages.draw.carryoverNoWinner;
     case "drawn":
       return mode === "reroll"
-        ? `再抽選しました。新しい担当者は <@${r.winnerId}> さんです。`
-        : `抽選しました。担当者は <@${r.winnerId}> さんです。`;
+        ? fill(messages.draw.rerolledReply, { winner: `<@${r.winnerId}>` })
+        : fill(messages.draw.drawnReply, { winner: `<@${r.winnerId}>` });
   }
 }

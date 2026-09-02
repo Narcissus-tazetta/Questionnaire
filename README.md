@@ -30,6 +30,12 @@ Discord サーバーで、毎日ランダムに1人「アンケート担当者�
 | `/reroll` | 本日の抽選をやり直す |
 | `/participants` | 本日の参加者一覧を表示する |
 
+## 文言の編集
+
+Bot が発言・返信する文言はすべて [`src/messages.ts`](src/messages.ts) にまとまっている。
+ダブルクオートで囲まれた日本語部分だけを書き換え、デプロイすると反映される。
+コマンド一覧の説明文（`commands:`）を変えた場合は `bun run register` も実行する。
+
 ## 技術
 
 Cloudflare Workers(HTTP Interactions)+ D1 + Durable Object アラーム。TypeScript / Bun。

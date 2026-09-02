@@ -3,6 +3,7 @@ import { verifyRequest } from "./discord/verify";
 import { pong } from "./discord/responses";
 import { InteractionType, type Interaction } from "./discord/types";
 import { handleCommand } from "./interactions/router";
+import { messages } from "./messages";
 import { ensureScheduler } from "./scheduler/drawScheduler";
 import { logger } from "./util/logger";
 
@@ -37,7 +38,7 @@ export default {
       if (!interaction.guild_id || interaction.guild_id !== env.GUILD_ID) {
         return Response.json({
           type: 4,
-          data: { content: "このBotは指定されたサーバーでのみ利用できます。", flags: EPHEMERAL },
+          data: { content: messages.guard.wrongGuild, flags: EPHEMERAL },
         });
       }
 
@@ -53,7 +54,7 @@ export default {
         });
         return Response.json({
           type: 4,
-          data: { content: "処理中にエラーが発生しました。", flags: EPHEMERAL },
+          data: { content: messages.common.error, flags: EPHEMERAL },
         });
       }
     }

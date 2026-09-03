@@ -144,17 +144,13 @@ function describeDraw(r: DrawResult, mode: "manual" | "reroll"): string {
     case "not_setup":
       return messages.common.notSetupShort;
     case "already_drawn":
-      return r.winnerId
-        ? fill(messages.draw.alreadyDrawn, { winner: `<@${r.winnerId}>` })
-        : messages.draw.alreadyProcessed;
+      return fill(messages.draw.alreadyDrawn, { winner: `<@${r.winnerId}>` });
     case "nothing_to_reroll":
       return messages.draw.nothingToReroll;
     case "reroll_no_candidates":
       return fill(messages.draw.rerollNoCandidates, { winner: `<@${r.winnerId}>` });
-    case "carryover":
-      return r.winnerId
-        ? fill(messages.draw.carryoverWithWinner, { winner: `<@${r.winnerId}>` })
-        : messages.draw.carryoverNoWinner;
+    case "no_entries":
+      return messages.draw.noEntries;
     case "drawn":
       return mode === "reroll"
         ? fill(messages.draw.rerolledReply, { winner: `<@${r.winnerId}>` })

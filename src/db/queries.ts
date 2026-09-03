@@ -14,7 +14,7 @@ export interface DailyResult {
   date: string;
   winner_id: string | null;
   drawn_at: string;
-  type: "normal" | "manual" | "reroll" | "carryover";
+  type: "normal" | "manual" | "reroll" | "none";
   message_id: string | null;
 }
 

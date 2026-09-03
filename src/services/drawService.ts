@@ -19,28 +19,25 @@ export type DrawMode = "auto" | "manual" | "reroll";
 
 export type DrawResult =
   | { status: "not_setup" }
-  | { status: "already_drawn"; winnerId: string | null; type: DailyResult["type"] }
+  | { status: "already_drawn"; winnerId: string }
   | { status: "nothing_to_reroll" }
   | { status: "reroll_no_candidates"; winnerId: string }
-  | { status: "carryover"; winnerId: string | null }
+  | { status: "no_entries" }
   | { status: "drawn"; winnerId: string };
 
-type Selection = { kind: "winner"; winnerId: string } | { kind: "carryover" };
+type Selection = { kind: "winner"; winnerId: string } | { kind: "empty" };
 
 /**
- * Pure selection: exclude the previous day's winner (§10) plus any reroll
- * excludes, then pick uniformly. An empty eligible pool — including the case
- * where the only entrant is yesterday's winner — falls back to carryover (§11).
+ * Pure selection: drop any reroll excludes, then pick uniformly. An empty pool
+ * means nobody volunteered for the day.
  */
 export function selectWinner(args: {
   entries: readonly string[];
-  prevWinnerId: string | null;
   excludeIds?: readonly string[];
 }): Selection {
   const blocked = new Set<string>(args.excludeIds ?? []);
-  if (args.prevWinnerId) blocked.add(args.prevWinnerId);
   const pool = args.entries.filter((id) => !blocked.has(id));
-  if (pool.length === 0) return { kind: "carryover" };
+  if (pool.length === 0) return { kind: "empty" };
   return { kind: "winner", winnerId: randomPick(pool) };
 }
 
@@ -60,16 +57,6 @@ function notification(cfg: GuildConfig, winnerId: string, rerolled = false): str
 
 function rerollFollowup(winnerId: string): string {
   return fill(messages.announce.rerollFollowup, { winner: `<@${winnerId}>` });
-}
-
-function carryoverEdit(prevWinnerId: string | null): string {
-  return prevWinnerId
-    ? fill(messages.announce.carryoverEditWithWinner, { prevWinner: `<@${prevWinnerId}>` })
-    : messages.announce.carryoverEditNoWinner;
-}
-
-function carryoverFollowup(prevWinnerId: string): string {
-  return fill(messages.announce.carryoverFollowup, { prevWinner: `<@${prevWinnerId}>` });
 }
 
 /**
@@ -122,62 +109,58 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
 
   const date = dateJST();
   const existing = await getResult(env.DB, env.GUILD_ID, date);
+  // A no-volunteer day records a winner-less row so the scheduler treats the day
+  // as handled; a later /entry + /draw may still fill it, so it is not "drawn".
+  const pendingNoEntries = existing !== null && existing.winner_id === null;
 
-  if (mode === "reroll" && !existing) return { status: "nothing_to_reroll" };
-  if (mode !== "reroll" && existing) {
-    return { status: "already_drawn", winnerId: existing.winner_id, type: existing.type };
+  if (mode === "reroll" && (existing === null || existing.winner_id === null)) {
+    return { status: "nothing_to_reroll" };
+  }
+  if (mode !== "reroll" && existing !== null && existing.winner_id !== null) {
+    return { status: "already_drawn", winnerId: existing.winner_id };
   }
 
   logger.info("Draw started", { guild: env.GUILD_ID, date, mode });
 
   const entries = (await resolveParticipants(env.DB, env.GUILD_ID, date)).map((p) => p.userId);
-  const prevWinnerId =
+  // Whoever currently wears the role: yesterday's winner. No-volunteer days strip
+  // it, so a single day of lookback is enough to find the holder.
+  const roleHolderId =
     (await getResult(env.DB, env.GUILD_ID, previousDateJST()))?.winner_id ?? null;
-  const excludeIds =
-    mode === "reroll" && existing?.winner_id ? [existing.winner_id] : [];
+  const excludeIds = mode === "reroll" && existing?.winner_id ? [existing.winner_id] : [];
 
-  const selection = selectWinner({ entries, prevWinnerId, excludeIds });
+  const selection = selectWinner({ entries, excludeIds });
+  const oldHolder = mode === "reroll" ? existing?.winner_id ?? null : roleHolderId;
 
-  if (selection.kind === "carryover") {
-    // A reroll with no *other* eligible entrant leaves the current winner in
-    // place rather than demoting them to yesterday's holder.
+  if (selection.kind === "empty") {
+    // A reroll with no *other* eligible entrant leaves the current winner alone.
     if (mode === "reroll" && existing?.winner_id && entries.includes(existing.winner_id)) {
       logger.info("Reroll had no alternative candidate", { guild: env.GUILD_ID, date });
       return { status: "reroll_no_candidates", winnerId: existing.winner_id };
     }
 
     logger.warn("No participants", { guild: env.GUILD_ID, date, mode });
-    const record = {
-      guild_id: env.GUILD_ID,
-      date,
-      winner_id: prevWinnerId,
-      type: "carryover" as const,
-    };
-    if (mode === "reroll") {
-      // Undo the earlier winner's role from today's first draw.
-      await reconcileRoles(env, cfg, existing?.winner_id ?? null, prevWinnerId);
+    await reconcileRoles(env, cfg, oldHolder, null);
+
+    const record = { guild_id: env.GUILD_ID, date, winner_id: null, type: "none" as const };
+    if (existing !== null) {
       await updateResult(env.DB, record);
-      const mentions = prevWinnerId ? [prevWinnerId] : [];
-      if (existing?.message_id) {
-        await editMessage(env, cfg.channel_id, existing.message_id, carryoverEdit(prevWinnerId), mentions);
-      }
-      // Edits don't notify, so ping the carried-over holder with a follow-up.
-      if (prevWinnerId) {
-        await postMessage(env, cfg.channel_id, carryoverFollowup(prevWinnerId), [prevWinnerId]);
+      if (mode === "reroll" && existing.message_id) {
+        await editMessage(
+          env,
+          cfg.channel_id,
+          existing.message_id,
+          messages.announce.rerollCancelledNoEntries,
+          [],
+        );
       }
     } else {
-      const inserted = await insertResult(env.DB, record);
-      if (!inserted) {
-        const now = await getResult(env.DB, env.GUILD_ID, date);
-        return { status: "already_drawn", winnerId: now?.winner_id ?? null, type: now?.type ?? "carryover" };
-      }
+      await insertResult(env.DB, record);
     }
-    return { status: "carryover", winnerId: prevWinnerId };
+    return { status: "no_entries" };
   }
 
   const winnerId = selection.winnerId;
-  const oldHolder = mode === "reroll" ? existing?.winner_id ?? null : prevWinnerId;
-
   const record = {
     guild_id: env.GUILD_ID,
     date,
@@ -185,13 +168,13 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
     type: RESULT_TYPE[mode],
   };
 
-  if (mode === "reroll") {
+  if (mode === "reroll" || pendingNoEntries) {
     await updateResult(env.DB, record);
   } else {
     const inserted = await insertResult(env.DB, record);
     if (!inserted) {
       const now = await getResult(env.DB, env.GUILD_ID, date);
-      return { status: "already_drawn", winnerId: now?.winner_id ?? null, type: now?.type ?? "normal" };
+      return { status: "already_drawn", winnerId: now?.winner_id ?? winnerId };
     }
   }
 

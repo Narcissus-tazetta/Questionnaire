@@ -14,30 +14,21 @@ test("randomPick covers every element over many draws", () => {
   expect(seen.size).toBe(3);
 });
 
-test("selectWinner excludes the previous day's winner", () => {
-  const r = selectWinner({ entries: ["A", "B"], prevWinnerId: "A" });
-  expect(r).toEqual({ kind: "winner", winnerId: "B" });
+test("selectWinner is empty when there are no entries", () => {
+  expect(selectWinner({ entries: [] })).toEqual({ kind: "empty" });
 });
 
-test("selectWinner carries over when there are no entries", () => {
-  expect(selectWinner({ entries: [], prevWinnerId: "A" })).toEqual({ kind: "carryover" });
-});
-
-test("selectWinner carries over when the only entrant is yesterday's winner", () => {
-  expect(selectWinner({ entries: ["A"], prevWinnerId: "A" })).toEqual({ kind: "carryover" });
-});
-
-test("selectWinner without a previous winner picks from all entries", () => {
-  const r = selectWinner({ entries: ["A", "B", "C"], prevWinnerId: null });
+test("selectWinner picks from all entries", () => {
+  const r = selectWinner({ entries: ["A", "B", "C"] });
   if (r.kind !== "winner") throw new Error("expected a winner");
   expect(["A", "B", "C"]).toContain(r.winnerId);
 });
 
-test("selectWinner honours reroll excludes on top of the previous winner", () => {
-  const r = selectWinner({
-    entries: ["A", "B", "C"],
-    prevWinnerId: "A",
-    excludeIds: ["B"],
-  });
+test("selectWinner honours reroll excludes", () => {
+  const r = selectWinner({ entries: ["A", "B", "C"], excludeIds: ["A", "B"] });
   expect(r).toEqual({ kind: "winner", winnerId: "C" });
+});
+
+test("selectWinner is empty when every entrant is excluded", () => {
+  expect(selectWinner({ entries: ["A"], excludeIds: ["A"] })).toEqual({ kind: "empty" });
 });

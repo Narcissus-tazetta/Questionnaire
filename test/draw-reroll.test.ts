@@ -129,9 +129,7 @@ test("reroll falls back to a fresh post when the original message id is missing"
 test("reroll keeps the current winner when no other entrant is eligible", async () => {
   const env = makeEnv();
   await setup(env);
-  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
-  await addDailyEntry(env.DB, "g", isoDate(), "X");
-  await addDailyEntry(env.DB, "g", isoDate(), "Y"); // yesterday's winner, blocked by the 1-day rule
+  await addDailyEntry(env.DB, "g", isoDate(), "X"); // the only entrant
 
   const first = await runDraw(env, "auto");
   expect((first as { winnerId: string }).winnerId).toBe("X");
@@ -148,42 +146,65 @@ test("reroll keeps the current winner when no other entrant is eligible", async 
   expect(stored?.type).toBe("normal"); // untouched
 });
 
-test("reroll that loses every entrant carries over and pings the holder", async () => {
+test("reroll that loses every entrant clears the day and strips the role", async () => {
   const env = makeEnv();
   await setup(env);
-  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
   await addDailyEntry(env.DB, "g", isoDate(), "A");
   await runDraw(env, "auto"); // A wins, announced as msg-1
   await removeDailyEntry(env.DB, "g", isoDate(), "A"); // A drops out before the reroll
   calls = [];
 
   const res = await runDraw(env, "reroll");
-  expect(res).toEqual({ status: "carryover", winnerId: "Y" });
+  expect(res).toEqual({ status: "no_entries" });
 
   const edit = calls.find((c) => c.fn === "editMessage");
-  expect(edit?.args[4]).toEqual(["Y"]);
-  const followup = calls.find((c) => c.fn === "postMessage");
-  expect(String(followup?.args[2])).toContain("Y");
+  expect(edit?.args[2]).toBe("msg-1");
+  expect(String(edit?.args[3])).toContain("担当者はなし");
+  expect(calls.some((c) => c.fn === "postMessage")).toBe(false);
   expect(calls.find((c) => c.fn === "removeRole")?.args[2]).toBe("A");
-  expect(calls.find((c) => c.fn === "addRole")?.args[2]).toBe("Y");
+  expect(calls.some((c) => c.fn === "addRole")).toBe(false);
 
   const stored = await getResult(env.DB, "g", isoDate());
-  expect(stored?.type).toBe("carryover");
-  expect(stored?.winner_id).toBe("Y");
+  expect(stored?.type).toBe("none");
+  expect(stored?.winner_id).toBeNull();
 });
 
-test("previous-day winner is excluded and does not lose their role on carryover", async () => {
+test("yesterday's winner may be drawn again on consecutive days", async () => {
   const env = makeEnv();
   await setup(env);
-  // yesterday's winner recorded directly
   await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
-  // only entrant today is yesterday's winner -> carryover
-  await addAuto(env.DB, "g", "Y");
+  await addAuto(env.DB, "g", "Y"); // Y is the only entrant today
 
   const res = await runDraw(env, "auto");
-  expect(res).toEqual({ status: "carryover", winnerId: "Y" });
+  expect(res).toEqual({ status: "drawn", winnerId: "Y" });
+});
+
+test("no participants: role is stripped, no announcement, day stays re-drawable", async () => {
+  const env = makeEnv();
+  await setup(env);
+  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });
+  // nobody enters today
+
+  const res = await runDraw(env, "auto");
+  expect(res).toEqual({ status: "no_entries" });
+  expect(calls.find((c) => c.fn === "removeRole")?.args[2]).toBe("Y");
   expect(calls.some((c) => c.fn === "postMessage")).toBe(false);
-  expect(calls.some((c) => c.fn === "removeRole")).toBe(false);
+
+  const stored = await getResult(env.DB, "g", isoDate());
+  expect(stored?.winner_id).toBeNull();
+  expect(stored?.type).toBe("none");
+
+  // later, someone volunteers and an admin runs /draw
+  await addDailyEntry(env.DB, "g", isoDate(), "Z");
+  calls = [];
+  const res2 = await runDraw(env, "manual");
+  expect(res2).toEqual({ status: "drawn", winnerId: "Z" });
+  expect(calls.find((c) => c.fn === "addRole")?.args[2]).toBe("Z");
+  expect(calls.some((c) => c.fn === "postMessage")).toBe(true);
+
+  const stored2 = await getResult(env.DB, "g", isoDate());
+  expect(stored2?.winner_id).toBe("Z");
+  expect(stored2?.type).toBe("manual");
 });
 
 function isoDate(): string {

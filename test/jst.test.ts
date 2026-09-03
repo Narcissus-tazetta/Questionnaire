@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   dateJST,
   isValidDrawTime,
+  nextDateJST,
   nextDrawEpochMs,
   previousDateJST,
   timeJST,
@@ -24,20 +25,39 @@ test("previousDateJST is the JST day before", () => {
   expect(previousDateJST(new Date("2026-03-01T15:30:00Z"))).toBe("2026-03-01");
 });
 
+test("nextDateJST is the JST day after", () => {
+  // 2026-09-02T00:30:00Z = 2026-09-02 09:30 JST -> next is 2026-09-03
+  expect(nextDateJST(new Date("2026-09-02T00:30:00Z"))).toBe("2026-09-03");
+  // 2026-09-01T15:30:00Z = 2026-09-02 00:30 JST -> next is 2026-09-03
+  expect(nextDateJST(new Date("2026-09-01T15:30:00Z"))).toBe("2026-09-03");
+});
+
 test("nextDrawEpochMs schedules today's slot when the time is still ahead", () => {
   // now = 2026-09-01 10:00 JST, draw at 20:00 JST
   const now = Date.parse("2026-09-01T01:00:00Z");
   expect(nextDrawEpochMs("20:00", false, now)).toBe(Date.parse("2026-09-01T11:00:00Z"));
 });
 
-test("nextDrawEpochMs catches up immediately when the slot was missed", () => {
+test("nextDrawEpochMs catches up a slot missed within the last few hours", () => {
   // now = 2026-09-01 21:00 JST, draw at 20:00 JST, not drawn yet
   const now = Date.parse("2026-09-01T12:00:00Z");
   expect(nextDrawEpochMs("20:00", false, now)).toBe(now + 1000);
 });
 
+test("nextDrawEpochMs waits for the next slot once the miss is stale", () => {
+  // now = 2026-09-02 10:00 JST, draw at 00:00 JST, still not drawn (10h late)
+  const now = Date.parse("2026-09-02T01:00:00Z");
+  expect(nextDrawEpochMs("00:00", false, now)).toBe(Date.parse("2026-09-02T15:00:00Z"));
+});
+
 test("nextDrawEpochMs schedules tomorrow once today is drawn", () => {
   const now = Date.parse("2026-09-01T12:00:00Z");
+  expect(nextDrawEpochMs("20:00", true, now)).toBe(Date.parse("2026-09-02T11:00:00Z"));
+});
+
+test("nextDrawEpochMs skips today's slot when it was already drawn early", () => {
+  // now = 2026-09-01 10:00 JST (before the 20:00 slot), but a manual draw ran
+  const now = Date.parse("2026-09-01T01:00:00Z");
   expect(nextDrawEpochMs("20:00", true, now)).toBe(Date.parse("2026-09-02T11:00:00Z"));
 });
 

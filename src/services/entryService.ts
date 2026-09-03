@@ -4,7 +4,6 @@ import {
   addDailyEntry,
   addExclusion,
   getConfig,
-  getResult,
   hasDailyEntry,
   isAuto,
   isExcluded,
@@ -12,7 +11,7 @@ import {
   removeDailyEntry,
   removeExclusion,
 } from "../db/queries";
-import { dateJST } from "../util/jst";
+import { nextDateJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { fill, messages } from "../messages";
 
@@ -21,18 +20,20 @@ export interface Outcome {
   message: string;
 }
 
+/**
+ * Entries are volunteered a day ahead: the draw at the top of day D picks from
+ * whoever signed up during day D-1, so the winner has the whole day for the task.
+ */
 export async function entry(env: Env, userId: string): Promise<Outcome> {
-  const date = dateJST();
-  const [cfg, drawn, auto, excluded, hasEntry] = await Promise.all([
+  const date = nextDateJST();
+  const [cfg, auto, excluded, hasEntry] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
-    getResult(env.DB, env.GUILD_ID, date),
     isAuto(env.DB, env.GUILD_ID, userId),
     isExcluded(env.DB, env.GUILD_ID, date, userId),
     hasDailyEntry(env.DB, env.GUILD_ID, date, userId),
   ]);
 
   if (!cfg) return { ok: false, message: messages.common.notSetup };
-  if (drawn) return { ok: false, message: messages.entry.closed };
 
   if (!excluded && (hasEntry || auto)) {
     return {
@@ -48,15 +49,13 @@ export async function entry(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function cancel(env: Env, userId: string): Promise<Outcome> {
-  const date = dateJST();
-  const [cfg, drawn, auto] = await Promise.all([
+  const date = nextDateJST();
+  const [cfg, auto] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
-    getResult(env.DB, env.GUILD_ID, date),
     isAuto(env.DB, env.GUILD_ID, userId),
   ]);
 
   if (!cfg) return { ok: false, message: messages.common.notSetup };
-  if (drawn) return { ok: false, message: messages.cancel.closed };
 
   const removed = await removeDailyEntry(env.DB, env.GUILD_ID, date, userId);
   let optedOut = false;
@@ -77,34 +76,31 @@ export async function cancel(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function toggleAuto(env: Env, userId: string): Promise<Outcome> {
-  const date = dateJST();
-  const [cfg, drawn, currentlyAuto] = await Promise.all([
+  const date = nextDateJST();
+  const [cfg, currentlyAuto] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
-    getResult(env.DB, env.GUILD_ID, date),
     isAuto(env.DB, env.GUILD_ID, userId),
   ]);
 
   if (!cfg) return { ok: false, message: messages.common.notSetup };
-  const drawnToday = drawn !== null;
 
   if (currentlyAuto) {
     await removeAuto(env.DB, env.GUILD_ID, userId);
     logger.info("Auto-entry off", { guild: env.GUILD_ID, user: userId });
-    const keepsToday = await hasDailyEntry(env.DB, env.GUILD_ID, date, userId);
-    const note = !drawnToday && !keepsToday ? messages.auto.offAlsoTodayNote : "";
+    const keepsNext = await hasDailyEntry(env.DB, env.GUILD_ID, date, userId);
+    const note = keepsNext ? "" : messages.auto.offAlsoNextNote;
     return { ok: true, message: fill(messages.auto.off, { note }) };
   }
 
   await addAuto(env.DB, env.GUILD_ID, userId);
   await removeExclusion(env.DB, env.GUILD_ID, date, userId);
   logger.info("Auto-entry on", { guild: env.GUILD_ID, user: userId });
-  const note = drawnToday ? messages.auto.onDrawnNote : "";
-  return { ok: true, message: fill(messages.auto.on, { note }) };
+  return { ok: true, message: messages.auto.on };
 }
 
 export async function status(env: Env, userId: string): Promise<string> {
-  const date = dateJST();
-  const [cfg, auto, excludedToday, hasEntry] = await Promise.all([
+  const date = nextDateJST();
+  const [cfg, auto, excludedNext, hasEntry] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
     isAuto(env.DB, env.GUILD_ID, userId),
     isExcluded(env.DB, env.GUILD_ID, date, userId),
@@ -112,11 +108,11 @@ export async function status(env: Env, userId: string): Promise<string> {
   ]);
   if (!cfg) return messages.common.notSetup;
 
-  const joined = !excludedToday && (hasEntry || auto);
+  const joined = !excludedNext && (hasEntry || auto);
 
   let joinState: string;
   if (joined) joinState = messages.status.joined;
-  else if (auto && excludedToday) joinState = messages.status.notJoinedCancelled;
+  else if (auto && excludedNext) joinState = messages.status.notJoinedCancelled;
   else joinState = messages.status.notJoined;
 
   return fill(messages.status.body, {

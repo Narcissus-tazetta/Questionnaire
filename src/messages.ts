@@ -49,36 +49,33 @@ export const messages = {
         wrongGuild: "このBotは指定されたサーバーでのみ利用できます。",
     },
 
-    /** /entry の返信 */
+    /** /entry の返信。抽選は前日に募るので「翌日の抽選」への登録になる。 */
     entry: {
-        ok: "本日の抽選に参加しました。",
-        already: "既に本日の抽選に参加しています。",
-        alreadyAuto: "既に本日の抽選に参加しています（自動参加が有効です）。",
-        closed: "本日の抽選は既に終了しているため、参加を受け付けられません。",
+        ok: "翌日の抽選に参加登録しました。",
+        already: "既に翌日の抽選に参加登録しています。",
+        alreadyAuto: "既に翌日の抽選に参加登録しています（自動参加が有効です）。",
     },
 
     /** /cancel の返信 */
     cancel: {
-        ok: "本日の抽選への参加を取り消しました。",
-        okAuto: "本日の抽選への参加を取り消しました。自動参加は有効なままです（停止するには /auto）。",
-        notJoined: "本日の抽選には参加していません。",
-        closed: "本日の抽選は既に終了しているため、取り消しできません。",
+        ok: "翌日の抽選への参加登録を取り消しました。",
+        okAuto: "翌日の抽選への参加登録を取り消しました。自動参加は有効なままです（停止するには /auto）。",
+        notJoined: "翌日の抽選には参加登録していません。",
     },
 
     /** /auto の返信。{note} には下の *Note が入る場合がある（入らないと空になる）。 */
     auto: {
-        on: "自動参加をオンにしました。解除するまで毎日自動で抽選に参加します。{note}",
-        onDrawnNote: "本日は抽選終了済みのため、明日から有効です。",
+        on: "自動参加をオンにしました。解除するまで毎日、翌日の抽選に自動で参加します。",
         off: "自動参加をオフにしました。{note}",
-        offAlsoTodayNote: "本日分の参加も取り消されました。",
+        offAlsoNextNote: "翌日分の参加登録も取り消されました。",
     },
 
     /** /status の返信 */
     status: {
-        body: "本日の抽選（{date}）\n\n参加状態: {joinState}\n自動参加: {autoState}",
+        body: "次回の抽選（{date}）\n\n参加状態: {joinState}\n自動参加: {autoState}",
         joined: "参加中",
         notJoined: "未参加",
-        notJoinedCancelled: "未参加（本日は取り消し済み）",
+        notJoinedCancelled: "未参加（翌日分は取り消し済み）",
         autoOn: "オン",
         autoOff: "オフ",
     },
@@ -128,9 +125,9 @@ export const messages = {
      * 変更後は `bun run register` を実行しないと Discord 側に反映されません。
      */
     commands: {
-        entry: "本日のアンケート担当抽選に参加する",
+        entry: "翌日のアンケート担当抽選に参加登録する",
         auto: "自動参加のオン/オフを切り替える（解除するまで毎日参加）",
-        cancel: "本日の抽選への参加を取り消す",
+        cancel: "翌日の抽選への参加登録を取り消す",
         status: "自分の参加状態と自動参加の設定を確認する",
         setup: "Botのサーバー設定を行う（管理者用）",
         setupOptions: {
@@ -141,6 +138,6 @@ export const messages = {
         },
         draw: "本日の抽選を手動実行する（管理者用）",
         reroll: "本日の抽選をやり直す（管理者用）",
-        participants: "本日の参加者一覧を表示する（管理者用）",
+        participants: "次回の抽選の参加者一覧を表示する（管理者用）",
     },
 } as const;

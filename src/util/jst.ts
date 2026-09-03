@@ -21,8 +21,13 @@ export function dateJST(at: Date = new Date()): string {
 
 /** "YYYY-MM-DD" for the JST day before the given instant's JST day */
 export function previousDateJST(at: Date = new Date()): string {
-  // JST has no DST, so subtracting 24h always lands on the previous JST day.
+  // JST has no DST, so shifting 24h always lands on the adjacent JST day.
   return dateJST(new Date(at.getTime() - 24 * 60 * 60 * 1000));
+}
+
+/** "YYYY-MM-DD" for the JST day after the given instant's JST day */
+export function nextDateJST(at: Date = new Date()): string {
+  return dateJST(new Date(at.getTime() + 24 * 60 * 60 * 1000));
 }
 
 /** "HH:MM" (24h) in Asia/Tokyo */
@@ -43,11 +48,16 @@ export function isValidDrawTime(value: string): boolean {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// How long after a missed slot we still bother catching it up. Past this the day
+// is mostly gone, so we wait for the next slot rather than firing at an odd hour
+// (which also stops repeated re-arms — e.g. /setup at 00:00 — from misfiring).
+const CATCHUP_WINDOW_MS = 3 * 60 * 60 * 1000;
+
 /**
  * Epoch-ms for when the draw scheduler should next fire.
- * - before today's draw time  -> today's draw time
- * - after it, no result yet    -> ~now (a missed slot is caught up immediately)
- * - after it, already drawn     -> tomorrow's draw time
+ * - draw time still ahead, not yet drawn -> today's draw time
+ * - draw time passed within the catch-up window, not yet drawn -> ~now
+ * - otherwise -> tomorrow's draw time
  */
 export function nextDrawEpochMs(
   drawTime: string,
@@ -55,7 +65,7 @@ export function nextDrawEpochMs(
   now: number = Date.now(),
 ): number {
   const todayAt = Date.parse(`${dateJST(new Date(now))}T${drawTime}:00+09:00`);
-  if (now < todayAt) return todayAt;
-  if (!hasResultToday) return now + 1000;
+  if (now < todayAt) return hasResultToday ? todayAt + DAY_MS : todayAt;
+  if (!hasResultToday && now - todayAt < CATCHUP_WINDOW_MS) return now + 1000;
   return todayAt + DAY_MS;
 }

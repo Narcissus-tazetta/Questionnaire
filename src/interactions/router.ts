@@ -6,7 +6,7 @@ import { actorId, hasManageGuild, optionValue, type Interaction } from "../disco
 import { armScheduler } from "../scheduler/drawScheduler";
 import { runDraw, type DrawResult } from "../services/drawService";
 import { cancel, entry, status, toggleAuto } from "../services/entryService";
-import { dateJST, isValidDrawTime } from "../util/jst";
+import { isValidDrawTime, nextDateJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { fill, messages } from "../messages";
 
@@ -128,7 +128,7 @@ async function describeParticipants(env: Env): Promise<string> {
   const cfg = await getConfig(env.DB, env.GUILD_ID);
   if (!cfg) return messages.common.notSetupShort;
 
-  const date = dateJST();
+  const date = nextDateJST();
   const people = await resolveParticipants(env.DB, env.GUILD_ID, date);
   if (people.length === 0) {
     return fill(messages.participants.empty, { date });

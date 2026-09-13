@@ -207,6 +207,32 @@ test("no participants: role is stripped, no announcement, day stays re-drawable"
   expect(stored2?.type).toBe("manual");
 });
 
+test("weighting favors the entrant who won longest ago", async () => {
+  const env = makeEnv();
+  await setup(env);
+  // "Stale" last won long ago; "Recent" won just yesterday. Stale should win far more often.
+  await insertResult(env.DB, { guild_id: "g", date: daysAgo(60), winner_id: "Stale", type: "normal" });
+  await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Recent", type: "normal" });
+  await addAuto(env.DB, "g", "Stale");
+  await addAuto(env.DB, "g", "Recent");
+
+  let staleWins = 0;
+  for (let i = 0; i < 30; i++) {
+    await env.DB.prepare("DELETE FROM daily_results WHERE guild_id = ? AND date = ?")
+      .bind("g", isoDate())
+      .run();
+    const res = await runDraw(env, "manual");
+    if (res.status === "drawn" && res.winnerId === "Stale") staleWins++;
+  }
+  expect(staleWins).toBeGreaterThan(20);
+});
+
+function daysAgo(n: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(
+    new Date(Date.now() - n * 86400000),
+  );
+}
+
 function isoDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
 }

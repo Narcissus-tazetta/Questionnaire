@@ -48,6 +48,11 @@ export function isValidDrawTime(value: string): boolean {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Whole days from JST date `from` to JST date `to` (both "YYYY-MM-DD"). */
+export function daysSinceJST(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
+}
+
 // How long after a missed slot we still bother catching it up. Past this the day
 // is mostly gone, so we wait for the next slot rather than firing at an odd hour
 // (which also stops repeated re-arms — e.g. /setup at 00:00 — from misfiring).

@@ -15,3 +15,17 @@ export function randomPick<T>(items: readonly T[]): T {
   if (items.length === 0) throw new Error("cannot pick from an empty list");
   return items[randomInt(items.length)]!;
 }
+
+/** Weighted pick via cumulative sum; weights must be positive integers. */
+export function weightedPick<T>(items: readonly T[], weightOf: (item: T) => number): T {
+  if (items.length === 0) throw new Error("cannot pick from an empty list");
+  const weights = items.map(weightOf);
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) throw new Error("total weight must be > 0");
+  let r = randomInt(total);
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i]!;
+    if (r < 0) return items[i]!;
+  }
+  return items[items.length - 1]!;
+}

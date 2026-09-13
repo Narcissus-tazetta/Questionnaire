@@ -1,6 +1,7 @@
 import type { Env } from "../config";
 import {
   getConfig,
+  getLastWinDates,
   getResult,
   insertResult,
   resolveParticipants,
@@ -11,9 +12,9 @@ import {
 } from "../db/queries";
 import { addRole, editMessage, postMessage, removeRole } from "../discord/rest";
 import { fill, messages } from "../messages";
-import { dateJST, previousDateJST } from "../util/jst";
+import { dateJST, daysSinceJST, previousDateJST } from "../util/jst";
 import { logger } from "../util/logger";
-import { randomPick } from "../util/random";
+import { randomPick, weightedPick } from "../util/random";
 
 export type DrawMode = "auto" | "manual" | "reroll";
 
@@ -28,17 +29,47 @@ export type DrawResult =
 type Selection = { kind: "winner"; winnerId: string } | { kind: "empty" };
 
 /**
- * Pure selection: drop any reroll excludes, then pick uniformly. An empty pool
- * means nobody volunteered for the day.
+ * Pure selection: drop any reroll excludes, then pick — weighted by `weights`
+ * when given, uniformly otherwise. An empty pool means nobody volunteered.
  */
 export function selectWinner(args: {
   entries: readonly string[];
   excludeIds?: readonly string[];
+  weights?: ReadonlyMap<string, number>;
 }): Selection {
   const blocked = new Set<string>(args.excludeIds ?? []);
   const pool = args.entries.filter((id) => !blocked.has(id));
   if (pool.length === 0) return { kind: "empty" };
-  return { kind: "winner", winnerId: randomPick(pool) };
+  const weights = args.weights;
+  const winnerId = weights ? weightedPick(pool, (id) => weights.get(id) ?? 1) : randomPick(pool);
+  return { kind: "winner", winnerId };
+}
+
+/**
+ * Weight = days since an entrant's last win, so longer-waiting people are more
+ * likely to be picked. Entrants who have never won are weighted just above the
+ * pool's longest-waiting known entrant, keeping "never won" at the top without
+ * an arbitrary constant.
+ */
+function computeWinWeights(
+  entries: readonly string[],
+  lastWin: ReadonlyMap<string, string>,
+  today: string,
+): Map<string, number> {
+  const gaps = new Map<string, number>();
+  let maxGap = 0;
+  for (const id of entries) {
+    const last = lastWin.get(id);
+    if (last === undefined) continue;
+    const gap = daysSinceJST(last, today);
+    gaps.set(id, gap);
+    if (gap > maxGap) maxGap = gap;
+  }
+  const weights = new Map<string, number>();
+  for (const id of entries) {
+    weights.set(id, Math.max(gaps.get(id) ?? maxGap + 1, 1));
+  }
+  return weights;
 }
 
 const RESULT_TYPE: Record<DrawMode, DailyResult["type"]> = {
@@ -129,7 +160,9 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
     (await getResult(env.DB, env.GUILD_ID, previousDateJST()))?.winner_id ?? null;
   const excludeIds = mode === "reroll" && existing?.winner_id ? [existing.winner_id] : [];
 
-  const selection = selectWinner({ entries, excludeIds });
+  const lastWin = await getLastWinDates(env.DB, env.GUILD_ID, entries);
+  const weights = computeWinWeights(entries, lastWin, date);
+  const selection = selectWinner({ entries, excludeIds, weights });
   const oldHolder = mode === "reroll" ? existing?.winner_id ?? null : roleHolderId;
 
   if (selection.kind === "empty") {

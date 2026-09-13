@@ -249,6 +249,26 @@ export async function updateResult(db: D1Database, r: ResultRecord): Promise<voi
     .run();
 }
 
+/** Most recent winning date per user, for entrants who have won at least once. */
+export async function getLastWinDates(
+  db: D1Database,
+  guildId: string,
+  userIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map();
+  const placeholders = userIds.map(() => "?").join(",");
+  const res = await db
+    .prepare(
+      `SELECT winner_id, MAX(date) AS last_date
+       FROM daily_results
+       WHERE guild_id = ? AND winner_id IN (${placeholders})
+       GROUP BY winner_id`,
+    )
+    .bind(guildId, ...userIds)
+    .all<{ winner_id: string; last_date: string }>();
+  return new Map((res.results ?? []).map((r) => [r.winner_id, r.last_date]));
+}
+
 export async function setResultMessageId(
   db: D1Database,
   guildId: string,

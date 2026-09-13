@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { selectWinner } from "../src/services/drawService";
-import { randomPick } from "../src/util/random";
+import { randomPick, weightedPick } from "../src/util/random";
 
 test("randomPick always returns an element of the pool", () => {
   const pool = ["a", "b", "c", "d"];
@@ -31,4 +31,35 @@ test("selectWinner honours reroll excludes", () => {
 
 test("selectWinner is empty when every entrant is excluded", () => {
   expect(selectWinner({ entries: ["A"], excludeIds: ["A"] })).toEqual({ kind: "empty" });
+});
+
+test("weightedPick always returns an element of the pool", () => {
+  const pool = ["a", "b", "c"];
+  const weight = { a: 1, b: 5, c: 20 };
+  for (let i = 0; i < 500; i++) {
+    expect(pool).toContain(weightedPick(pool, (x) => weight[x as keyof typeof weight]));
+  }
+});
+
+test("weightedPick favors higher-weight items over many draws", () => {
+  const pool = ["rare", "common"];
+  const weight = { rare: 1, common: 99 };
+  const counts = { rare: 0, common: 0 };
+  for (let i = 0; i < 500; i++) {
+    counts[weightedPick(pool, (x) => weight[x as keyof typeof weight]) as keyof typeof counts]++;
+  }
+  expect(counts.common).toBeGreaterThan(counts.rare);
+});
+
+test("selectWinner with weights always favors the heavier entrant over many draws", () => {
+  const weights = new Map([
+    ["A", 1],
+    ["B", 100],
+  ]);
+  let bWins = 0;
+  for (let i = 0; i < 300; i++) {
+    const r = selectWinner({ entries: ["A", "B"], weights });
+    if (r.kind === "winner" && r.winnerId === "B") bWins++;
+  }
+  expect(bWins).toBeGreaterThan(250);
 });

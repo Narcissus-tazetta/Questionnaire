@@ -2,6 +2,7 @@ import type { Env } from "../config";
 import {
   getConfig,
   getLastWinDates,
+  getLatestResultBefore,
   getResult,
   insertResult,
   resolveParticipants,
@@ -12,7 +13,7 @@ import {
 } from "../db/queries";
 import { addRole, editMessage, postMessage, removeRole } from "../discord/rest";
 import { fill, messages } from "../messages";
-import { dateJST, daysSinceJST, previousDateJST } from "../util/jst";
+import { currentDrawDateJST, daysSinceJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { randomPick, weightedPick } from "../util/random";
 
@@ -138,10 +139,10 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
     return { status: "not_setup" };
   }
 
-  const date = dateJST();
+  const date = currentDrawDateJST();
   const existing = await getResult(env.DB, env.GUILD_ID, date);
-  // A no-volunteer day records a winner-less row so the scheduler treats the day
-  // as handled; a later /entry + /draw may still fill it, so it is not "drawn".
+  // A no-volunteer cycle records a winner-less row so the scheduler treats the
+  // cycle as handled; a later /draw may still fill it, so it is not "drawn".
   const pendingNoEntries = existing !== null && existing.winner_id === null;
 
   if (mode === "reroll" && (existing === null || existing.winner_id === null)) {
@@ -154,10 +155,10 @@ export async function runDraw(env: Env, mode: DrawMode): Promise<DrawResult> {
   logger.info("Draw started", { guild: env.GUILD_ID, date, mode });
 
   const entries = (await resolveParticipants(env.DB, env.GUILD_ID, date)).map((p) => p.userId);
-  // Whoever currently wears the role: yesterday's winner. No-volunteer days strip
-  // it, so a single day of lookback is enough to find the holder.
+  // Whoever currently wears the role: the previous draw's winner. No-volunteer
+  // draws strip it, so the latest earlier result alone identifies the holder.
   const roleHolderId =
-    (await getResult(env.DB, env.GUILD_ID, previousDateJST()))?.winner_id ?? null;
+    (await getLatestResultBefore(env.DB, env.GUILD_ID, date))?.winner_id ?? null;
   const excludeIds = mode === "reroll" && existing?.winner_id ? [existing.winner_id] : [];
 
   const lastWin = await getLastWinDates(env.DB, env.GUILD_ID, entries);

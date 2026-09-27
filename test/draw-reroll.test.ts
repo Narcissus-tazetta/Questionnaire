@@ -1,4 +1,4 @@
-import { beforeEach, expect, mock, test } from "bun:test";
+import { beforeEach, expect, mock, setSystemTime, test } from "bun:test";
 import { makeD1 } from "./helpers/d1";
 import {
   addAuto,
@@ -40,6 +40,8 @@ function makeEnv() {
 }
 
 beforeEach(() => {
+  // 2026-09-29 12:00 JST: a draw day, so "today" is the current cycle's draw date.
+  setSystemTime(new Date("2026-09-29T03:00:00Z"));
   calls = [];
   nextPostId = "msg-1";
 });
@@ -68,7 +70,7 @@ test("first draw posts an announcement and stores its message id", async () => {
   expect(calls.some((c) => c.fn === "editMessage")).toBe(false);
 
   const content = String(posts[0]!.args[2]);
-  expect(content).toContain("本日のアンケート担当者は");
+  expect(content).toContain("今回（5日間）のアンケート担当者は");
   expect(content).toContain("<#w>"); // work channel, not the announce channel
   expect(content).not.toMatch(/\p{Extended_Pictographic}/u); // no emoji
 
@@ -169,7 +171,7 @@ test("reroll that loses every entrant clears the day and strips the role", async
   expect(stored?.winner_id).toBeNull();
 });
 
-test("yesterday's winner may be drawn again on consecutive days", async () => {
+test("yesterday's winner may be drawn again in consecutive cycles", async () => {
   const env = makeEnv();
   await setup(env);
   await insertResult(env.DB, { guild_id: "g", date: yesterday(), winner_id: "Y", type: "normal" });

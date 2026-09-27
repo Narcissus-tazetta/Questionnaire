@@ -11,7 +11,7 @@ import {
   removeDailyEntry,
   removeExclusion,
 } from "../db/queries";
-import { nextDateJST } from "../util/jst";
+import { nextDrawDateJST } from "../util/jst";
 import { logger } from "../util/logger";
 import { fill, messages } from "../messages";
 
@@ -21,11 +21,12 @@ export interface Outcome {
 }
 
 /**
- * Entries are volunteered a day ahead: the draw at the top of day D picks from
- * whoever signed up during day D-1, so the winner has the whole day for the task.
+ * Entries are volunteered ahead of time: the draw at the top of draw day D picks
+ * from whoever signed up during the preceding cycle, so the winner has the whole
+ * cycle for the task.
  */
 export async function entry(env: Env, userId: string): Promise<Outcome> {
-  const date = nextDateJST();
+  const date = nextDrawDateJST();
   const [cfg, auto, excluded, hasEntry] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
     isAuto(env.DB, env.GUILD_ID, userId),
@@ -49,7 +50,7 @@ export async function entry(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function cancel(env: Env, userId: string): Promise<Outcome> {
-  const date = nextDateJST();
+  const date = nextDrawDateJST();
   const [cfg, auto] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
     isAuto(env.DB, env.GUILD_ID, userId),
@@ -76,7 +77,7 @@ export async function cancel(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function toggleAuto(env: Env, userId: string): Promise<Outcome> {
-  const date = nextDateJST();
+  const date = nextDrawDateJST();
   const [cfg, currentlyAuto] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
     isAuto(env.DB, env.GUILD_ID, userId),
@@ -99,7 +100,7 @@ export async function toggleAuto(env: Env, userId: string): Promise<Outcome> {
 }
 
 export async function status(env: Env, userId: string): Promise<string> {
-  const date = nextDateJST();
+  const date = nextDrawDateJST();
   const [cfg, auto, excludedNext, hasEntry] = await Promise.all([
     getConfig(env.DB, env.GUILD_ID),
     isAuto(env.DB, env.GUILD_ID, userId),

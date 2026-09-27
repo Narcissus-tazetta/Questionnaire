@@ -1,4 +1,4 @@
-import { TIMEZONE } from "../config";
+import { DRAW_CYCLE_ANCHOR, DRAW_INTERVAL_DAYS, TIMEZONE } from "../config";
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
   timeZone: TIMEZONE,
@@ -17,17 +17,6 @@ const timeFmt = new Intl.DateTimeFormat("en-GB", {
 /** "YYYY-MM-DD" in Asia/Tokyo */
 export function dateJST(at: Date = new Date()): string {
   return dateFmt.format(at);
-}
-
-/** "YYYY-MM-DD" for the JST day before the given instant's JST day */
-export function previousDateJST(at: Date = new Date()): string {
-  // JST has no DST, so shifting 24h always lands on the adjacent JST day.
-  return dateJST(new Date(at.getTime() - 24 * 60 * 60 * 1000));
-}
-
-/** "YYYY-MM-DD" for the JST day after the given instant's JST day */
-export function nextDateJST(at: Date = new Date()): string {
-  return dateJST(new Date(at.getTime() + 24 * 60 * 60 * 1000));
 }
 
 /** "HH:MM" (24h) in Asia/Tokyo */
@@ -53,6 +42,26 @@ export function daysSinceJST(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
 }
 
+function addDaysJST(date: string, days: number): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** The draw date of the cycle containing the given instant's JST day. */
+export function currentDrawDateJST(at: Date = new Date()): string {
+  const today = dateJST(at);
+  const offset = daysSinceJST(DRAW_CYCLE_ANCHOR, today) % DRAW_INTERVAL_DAYS;
+  return addDaysJST(today, -((offset + DRAW_INTERVAL_DAYS) % DRAW_INTERVAL_DAYS));
+}
+
+/**
+ * The first draw date strictly after the given instant's JST day. Entries are
+ * registered against this, so even on a draw day whose slot is still ahead,
+ * sign-ups count toward the following draw.
+ */
+export function nextDrawDateJST(at: Date = new Date()): string {
+  return addDaysJST(currentDrawDateJST(at), DRAW_INTERVAL_DAYS);
+}
+
 // How long after a missed slot we still bother catching it up. Past this the day
 // is mostly gone, so we wait for the next slot rather than firing at an odd hour
 // (which also stops repeated re-arms — e.g. /setup at 00:00 — from misfiring).
@@ -60,17 +69,18 @@ const CATCHUP_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 /**
  * Epoch-ms for when the draw scheduler should next fire.
- * - draw time still ahead, not yet drawn -> today's draw time
+ * - this cycle's draw time still ahead, not yet drawn -> that draw time
  * - draw time passed within the catch-up window, not yet drawn -> ~now
- * - otherwise -> tomorrow's draw time
+ * - otherwise -> the next cycle's draw time
  */
 export function nextDrawEpochMs(
   drawTime: string,
-  hasResultToday: boolean,
+  hasResultThisCycle: boolean,
   now: number = Date.now(),
 ): number {
-  const todayAt = Date.parse(`${dateJST(new Date(now))}T${drawTime}:00+09:00`);
-  if (now < todayAt) return hasResultToday ? todayAt + DAY_MS : todayAt;
-  if (!hasResultToday && now - todayAt < CATCHUP_WINDOW_MS) return now + 1000;
-  return todayAt + DAY_MS;
+  const slotAt = Date.parse(`${currentDrawDateJST(new Date(now))}T${drawTime}:00+09:00`);
+  const nextSlotAt = slotAt + DRAW_INTERVAL_DAYS * DAY_MS;
+  if (now < slotAt) return hasResultThisCycle ? nextSlotAt : slotAt;
+  if (!hasResultThisCycle && now - slotAt < CATCHUP_WINDOW_MS) return now + 1000;
+  return nextSlotAt;
 }

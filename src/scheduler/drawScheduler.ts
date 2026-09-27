@@ -1,7 +1,7 @@
 import type { Env } from "../config";
 import { getConfig, getResult, purgeDailyDataBefore } from "../db/queries";
 import { runDraw } from "../services/drawService";
-import { dateJST, nextDrawEpochMs } from "../util/jst";
+import { currentDrawDateJST, nextDrawEpochMs } from "../util/jst";
 import { logger } from "../util/logger";
 
 const SCHEDULER_NAME = "draw-scheduler";
@@ -22,9 +22,9 @@ export async function ensureScheduler(env: Env): Promise<void> {
 
 /**
  * A timer, not a data store. Holds a single alarm that fires at the configured
- * draw time, runs the draw, then re-arms itself for the next day. Using a
+ * draw time, runs the draw, then re-arms itself for the next draw. Using a
  * Durable Object alarm instead of a Cron Trigger keeps the bot at zero cron
- * triggers and ~1 scheduled invocation per day.
+ * triggers and ~1 scheduled invocation per draw.
  */
 export class DrawScheduler implements DurableObject {
   constructor(
@@ -56,10 +56,10 @@ export class DrawScheduler implements DurableObject {
       const result = await runDraw(this.env, "auto");
       logger.info("Scheduled draw finished", {
         guild: this.env.GUILD_ID,
-        date: dateJST(),
+        date: currentDrawDateJST(),
         status: result.status,
       });
-      await purgeDailyDataBefore(this.env.DB, this.env.GUILD_ID, dateJST()).catch((e) =>
+      await purgeDailyDataBefore(this.env.DB, this.env.GUILD_ID, currentDrawDateJST()).catch((e) =>
         logger.warn("Daily data purge failed", { error: String(e) }),
       );
     } finally {
@@ -68,7 +68,7 @@ export class DrawScheduler implements DurableObject {
   }
 
   private async reschedule(drawTime: string): Promise<void> {
-    const drawn = (await getResult(this.env.DB, this.env.GUILD_ID, dateJST())) !== null;
+    const drawn = (await getResult(this.env.DB, this.env.GUILD_ID, currentDrawDateJST())) !== null;
     await this.state.storage.setAlarm(nextDrawEpochMs(drawTime, drawn));
   }
 }

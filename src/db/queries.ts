@@ -226,6 +226,18 @@ export async function getResult(
     .first<DailyResult>();
 }
 
+/** The latest result dated strictly before `date`, if any. */
+export async function getLatestResultBefore(
+  db: D1Database,
+  guildId: string,
+  date: string,
+): Promise<DailyResult | null> {
+  return db
+    .prepare("SELECT * FROM daily_results WHERE guild_id = ? AND date < ? ORDER BY date DESC LIMIT 1")
+    .bind(guildId, date)
+    .first<DailyResult>();
+}
+
 /** Returns false when a result already existed for the day (double-draw guard). */
 export async function insertResult(db: D1Database, r: ResultRecord): Promise<boolean> {
   const res = await db

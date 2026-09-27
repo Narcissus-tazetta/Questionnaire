@@ -49,25 +49,25 @@ export const messages = {
         wrongGuild: "このBotは指定されたサーバーでのみ利用できます。",
     },
 
-    /** /entry の返信。抽選は前日に募るので「翌日の抽選」への登録になる。 */
+    /** /entry の返信。抽選は事前に募るので「次回の抽選」への登録になる。 */
     entry: {
-        ok: "翌日の抽選に参加登録しました。",
-        already: "既に翌日の抽選に参加登録しています。",
-        alreadyAuto: "既に翌日の抽選に参加登録しています（自動参加が有効です）。",
+        ok: "次回の抽選に参加登録しました。",
+        already: "既に次回の抽選に参加登録しています。",
+        alreadyAuto: "既に次回の抽選に参加登録しています（自動参加が有効です）。",
     },
 
     /** /cancel の返信 */
     cancel: {
-        ok: "翌日の抽選への参加登録を取り消しました。",
-        okAuto: "翌日の抽選への参加登録を取り消しました。自動参加は有効なままです（停止するには /auto）。",
-        notJoined: "翌日の抽選には参加登録していません。",
+        ok: "次回の抽選への参加登録を取り消しました。",
+        okAuto: "次回の抽選への参加登録を取り消しました。自動参加は有効なままです（停止するには /auto）。",
+        notJoined: "次回の抽選には参加登録していません。",
     },
 
     /** /auto の返信。{note} には下の *Note が入る場合がある（入らないと空になる）。 */
     auto: {
-        on: "自動参加をオンにしました。解除するまで毎日、翌日の抽選に自動で参加します。",
+        on: "自動参加をオンにしました。解除するまで毎回の抽選に自動で参加します。",
         off: "自動参加をオフにしました。{note}",
-        offAlsoNextNote: "翌日分の参加登録も取り消されました。",
+        offAlsoNextNote: "次回分の参加登録も取り消されました。",
     },
 
     /** /status の返信 */
@@ -75,7 +75,7 @@ export const messages = {
         body: "次回の抽選（{date}）\n\n参加状態: {joinState}\n自動参加: {autoState}",
         joined: "参加中",
         notJoined: "未参加",
-        notJoinedCancelled: "未参加（翌日分は取り消し済み）",
+        notJoinedCancelled: "未参加（次回分は取り消し済み）",
         autoOn: "オン",
         autoOff: "オフ",
     },
@@ -104,20 +104,20 @@ export const messages = {
         error: "抽選処理でエラーが発生しました。ログを確認してください。",
         drawnReply: "抽選しました。担当者は {winner} さんです。",
         rerolledReply: "再抽選しました。新しい担当者は {winner} さんです。",
-        alreadyDrawn: "本日は既に抽選済みです（担当者: {winner}）。やり直すなら /reroll を使用してください。",
-        nothingToReroll: "本日はまだ抽選が行われていません。/draw を使用してください。",
+        alreadyDrawn: "今回は既に抽選済みです（担当者: {winner}）。やり直すなら /reroll を使用してください。",
+        nothingToReroll: "今回はまだ抽選が行われていません。/draw を使用してください。",
         rerollNoCandidates: "他に対象となる参加者がいないため、担当は {winner} さんのままです。",
-        noEntries: "参加者がいなかったため、本日の担当者はなしになりました。",
+        noEntries: "参加者がいなかったため、今回の担当者はなしになりました。",
     },
 
     /** 告知チャンネルへ実際に投稿される文言 */
     announce: {
-        winner: "本日のアンケート担当者は {winner} さんです。\n{workChannel} にてアンケートの作成をお願いします。",
+        winner: "今回（5日間）のアンケート担当者は {winner} さんです。\n{workChannel} にてアンケートの作成をお願いします。",
         winnerReroll:
-            "本日のアンケート担当者は {winner} さんです。（再抽選）\n{workChannel} にてアンケートの作成をお願いします。",
+            "今回（5日間）のアンケート担当者は {winner} さんです。（再抽選）\n{workChannel} にてアンケートの作成をお願いします。",
         // reroll 時、編集した告知に加えて新担当へ通知を飛ばすための短い追いメッセージ
         rerollFollowup: "再抽選しました。新しい担当者は {winner} さんです。",
-        rerollCancelledNoEntries: "参加者がいなくなったため再抽選は取り消されました。本日の担当者はなしになりました。",
+        rerollCancelledNoEntries: "参加者がいなくなったため再抽選は取り消されました。今回の担当者はなしになりました。",
     },
 
     /**
@@ -125,9 +125,9 @@ export const messages = {
      * 変更後は `bun run register` を実行しないと Discord 側に反映されません。
      */
     commands: {
-        entry: "翌日のアンケート担当抽選に参加登録する",
-        auto: "自動参加のオン/オフを切り替える（解除するまで毎日参加）",
-        cancel: "翌日の抽選への参加登録を取り消す",
+        entry: "次回のアンケート担当抽選に参加登録する",
+        auto: "自動参加のオン/オフを切り替える（解除するまで毎回参加）",
+        cancel: "次回の抽選への参加登録を取り消す",
         status: "自分の参加状態と自動参加の設定を確認する",
         setup: "Botのサーバー設定を行う（管理者用）",
         setupOptions: {
@@ -136,8 +136,8 @@ export const messages = {
             channel: "抽選結果を告知するチャンネル",
             work_channel: "アンケートを制作するチャンネル",
         },
-        draw: "本日の抽選を手動実行する（管理者用）",
-        reroll: "本日の抽選をやり直す（管理者用）",
+        draw: "今回の抽選を手動実行する（管理者用）",
+        reroll: "今回の抽選をやり直す（管理者用）",
         participants: "次回の抽選の参加者一覧を表示する（管理者用）",
     },
 } as const;

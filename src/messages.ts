@@ -112,9 +112,9 @@ export const messages = {
 
     /** 告知チャンネルへ実際に投稿される文言 */
     announce: {
-        winner: "今回（5日間）のアンケート担当者は {winner} さんです。\n{workChannel} にてアンケートの作成をお願いします。",
+        winner: "今回のアンケート担当者は {winner} さんです。\n{workChannel} にてアンケートの作成をお願いします。",
         winnerReroll:
-            "今回（5日間）のアンケート担当者は {winner} さんです。（再抽選）\n{workChannel} にてアンケートの作成をお願いします。",
+            "今回のアンケート担当者は {winner} さんです。（再抽選）\n{workChannel} にてアンケートの作成をお願いします。",
         // reroll 時、編集した告知に加えて新担当へ通知を飛ばすための短い追いメッセージ
         rerollFollowup: "再抽選しました。新しい担当者は {winner} さんです。",
         rerollCancelledNoEntries: "参加者がいなくなったため再抽選は取り消されました。今回の担当者はなしになりました。",

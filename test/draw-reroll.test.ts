@@ -70,7 +70,7 @@ test("first draw posts an announcement and stores its message id", async () => {
   expect(calls.some((c) => c.fn === "editMessage")).toBe(false);
 
   const content = String(posts[0]!.args[2]);
-  expect(content).toContain("今回（5日間）のアンケート担当者は");
+  expect(content).toContain("今回のアンケート担当者は");
   expect(content).toContain("<#w>"); // work channel, not the announce channel
   expect(content).not.toMatch(/\p{Extended_Pictographic}/u); // no emoji
 
